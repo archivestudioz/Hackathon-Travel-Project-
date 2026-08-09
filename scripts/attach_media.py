@@ -36,7 +36,7 @@ from urllib.parse import quote
 
 import requests
 
-from _common import insert, require_env, select
+from _common import insert, require_env, select, update
 
 TIKTOK_OEMBED = "https://www.tiktok.com/oembed"
 INSTAGRAM_OEMBED = "https://graph.facebook.com/v20.0/instagram_oembed"
@@ -119,7 +119,16 @@ def load_map(path: Path) -> list[tuple[str, str]]:
 
 
 def cmd_scan(folder: Path) -> int:
-    """Turn a downloads folder into a CSV skeleton to fill in."""
+    """Turn a downloads folder into a CSV skeleton to fill in.
+
+    Runs with no credentials — the useful half is reading post ids out of
+    filenames, and that needs nothing but the folder. If Supabase is
+    configured it also lists the experiences to match against.
+    """
+    if not folder.exists():
+        print(f"no such folder: {folder}")
+        return 1
+
     videos = sorted(
         p for p in folder.rglob("*")
         if p.suffix.lower() in {".mp4", ".mov", ".webm", ".mkv"}
@@ -128,8 +137,14 @@ def cmd_scan(folder: Path) -> int:
         print(f"no video files under {folder}")
         return 1
 
-    experiences = select("experiences", {"select": "id,name,category", "order": "name"})
-    print(f"# {len(videos)} files · {len(experiences)} experiences")
+    try:
+        experiences = select("experiences", {"select": "id,name,category", "order": "name"})
+    except Exception:
+        experiences = []
+
+    print(f"# {len(videos)} files"
+          + (f" · {len(experiences)} experiences" if experiences
+             else " · (no Supabase credentials — filename recovery only)"))
     print("# Paste into media.csv, match each URL to an experience, then:")
     print("#   python scripts/attach_media.py --map media.csv")
     print("#")
@@ -144,10 +159,11 @@ def cmd_scan(folder: Path) -> int:
             unresolved += 1
             print(f",,  # {video.name}  ← no post id in filename")
 
-    print("#")
-    print("# experiences to choose from:")
-    for e in experiences:
-        print(f"#   {e['id']}  {e['category']:<12} {e['name']}")
+    if experiences:
+        print("#")
+        print("# experiences to choose from:")
+        for e in experiences:
+            print(f"#   {e['id']}  {e['category']:<12} {e['name']}")
 
     if unresolved:
         print(f"#\n# {unresolved} file(s) had no recoverable id — find those posts by")
@@ -183,14 +199,23 @@ def cmd_map(path: Path, dry_run: bool) -> int:
 
         if dry_run:
             print(f"  · {data['attribution_name']:<22} → {experience_id[:8]}")
-        else:
+            attached += 1
+            continue
+
+        # The seed already gives every experience one placeholder primary row,
+        # and a partial unique index allows only one primary per experience —
+        # so replace that row rather than inserting a second one.
+        existing = update(
+            "experience_media",
+            {"experience_id": experience_id, "is_primary": "true"},
+            data,
+        )
+        if not existing:
             insert("experience_media", {
-                "experience_id": experience_id,
-                **data,
-                "position": 0,
-                "is_primary": True,
+                "experience_id": experience_id, **data,
+                "position": 0, "is_primary": True,
             })
-            print(f"  ✓ {data['attribution_name']:<22} → {experience_id[:8]}")
+        print(f"  ✓ {data['attribution_name']:<22} → {experience_id[:8]}")
         attached += 1
 
     print(f"\n{attached} attached, {failed} failed"
@@ -210,9 +235,11 @@ def main() -> int:
     if args.check:
         return cmd_check(args.check)
 
-    require_env()
+    # --scan deliberately does not require credentials.
     if args.scan:
         return cmd_scan(args.scan)
+
+    require_env()
     return cmd_map(args.map, args.dry_run)
 
 
