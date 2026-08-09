@@ -49,7 +49,7 @@ cp docs/roam-client.ts src/lib/roam.ts
 
 ```
 NEXT_PUBLIC_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJ...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_...
 ```
 
 The anon key is safe in the browser: it identifies the project, not the user.
