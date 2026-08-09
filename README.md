@@ -1,129 +1,105 @@
-# Roam
+# Japan travel discovery — backend engine
 
-**The first travel guide you listen to instead of read.**
+A personalised, social-media-style discovery feed for locally hosted events and
+experiences in **Tokyo, Kyoto, and Osaka**. Travelers increasingly find what to
+do through short-form video, but turning that inspiration into an actual
+itinerary is fragmented. This engine connects visual discovery to real event
+details, saving, and day-by-day planning.
 
-Roam connects travelers with **local guides — on foot, by car, or by boat** — and helps them find
-what's actually worth doing: restaurants, beaches, attractions, hikes, culture, and live events.
-Stops narrate themselves in your language as you approach them. A **wifi layer** runs underneath,
-because travelers usually don't have international service.
-
-Built at **Checkout**, NYC's travel & hospitality hackathon. Track 3 — *Local & experiences*.
-
----
-
-## Why this doesn't already exist
-
-The market splits cleanly in half, and nobody has joined it:
-
-| | Human guide | Audio | Live | On-demand |
-|---|:---:|:---:|:---:|:---:|
-| Viator · GetYourGuide | ✅ | ❌ | ❌ | ❌ book days ahead |
-| Airbnb Experiences | ✅ | ❌ | ❌ | ❌ scheduled |
-| VoiceMap · izi.TRAVEL · GPSmyCity | ❌ you're alone | ✅ | ❌ | ✅ |
-| **Roam** | ✅ | ✅ | ✅ | ✅ |
-
-Audio tour apps give you narration but no human. Marketplaces give you a human but no live
-experience. Roam is the first that's both.
+**Scope: backend and engine only.** The UI is built by a separate team against
+[`docs/api-contract.md`](docs/api-contract.md).
 
 ---
 
-## Three cities, three transport realities
+## What this is
 
-Each demo city breaks a different assumption, which is how we prove nothing is hardcoded:
+There is **no application server**. The client calls Postgres functions through
+PostgREST, and Postgres enforces every permission itself via Row Level Security.
+That removes the tier which usually breaks under time pressure, and RLS is what
+this product would use in production anyway.
 
-| City | Modes | What it stresses |
-|---|---|---|
-| **New York** | walk · drive | Density, huge event inventory, LinkNYC free wifi |
-| **San Juan** | walk · drive | Beaches, Spanish-first, cruise-day time windows |
-| **Venice** | walk · **boat** | **No cars exist.** The vaporetto is the vehicle. |
-
-Venice is the point: `travel_mode` is a first-class column with its own matching radius, speed,
-and stop count — not a toggle. Adding `boat` was one enum value and zero special cases.
-
----
-
-## Architecture
-
-**There is no application server.** The browser talks to Postgres through PostgREST, and Postgres
-enforces every permission itself via Row Level Security. That removes the tier that usually breaks
-under time pressure, and RLS is the pattern this product would use in production anyway.
+- **[`docs/architecture.md`](docs/architecture.md)** — system diagram, ER model, end-to-end dataflow, scoring breakdown
+- **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, media rendering rules
 
 ```
-Browser (static HTML/JS, no build step)
-   │  supabase-js ──────► Postgres RPC   nearby_places · match_guide · plan_route
-   │  Realtime    ──────► ride_positions INSERT, rides UPDATE   (WAL → WebSocket)
-   │  MapLibre    ──────► Protomaps global  |  ./tiles/*.pmtiles offline fallback
-   ▼
-Supabase: Postgres + PostGIS + RLS + Realtime + Storage (narration audio)
-   ▲ service-role
-scripts/simulate_guide.py   — drives the guide's dot; the 2nd device without a 2nd device
-scripts/fetch_places.py     — Overpass → seed SQL      (build time)
-scripts/narrate.py          — ElevenLabs → MP3 → Storage (build time)
+supabase/migrations/0001_schema.sql     tables, generated lat/lng, triggers
+supabase/migrations/0002_scoring.sql    experience_cards view, scoring, feed()
+supabase/migrations/0003_actions.sql    every button in the product
+supabase/migrations/0004_rls.sql        authorization, in the database
+supabase/seed.sql                       3 cities, 19 neighborhoods, 20 hosts, 20 experiences
 ```
 
-**The one trick everything depends on:** every `geography` column carries generated `lat`/`lng`
-companions. PostgREST serialises geography as hex EWKB, which the browser can't read — so the
-generated columns mean Realtime delivers plain numbers and there's **no decode step in the live
-path**.
-
-**Events intertwine with guides for one nullable column.** `ride_stops` takes either a `place_id`
-or an `event_id`, so an event is just a stop with a fixed start time. Matching, routing, and live
-tracking all work unchanged.
-
----
-
-## Quickstart
+## Setup
 
 ```bash
-cp .env.example .env          # fill in Supabase + Protomaps keys
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0001_schema.sql
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0002_functions.sql
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0003_rls.sql
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0004_realtime.sql
-psql "$SUPABASE_DB_URL" -f supabase/migrations/0005_auth_hook.sql
-psql "$SUPABASE_DB_URL" -f supabase/seed.sql
+cp .env.example .env        # fill in Supabase credentials
 
-cp web/config.example.js web/config.js   # paste anon key + Protomaps key
-python -m http.server 8080 --directory web
+for f in supabase/migrations/*.sql supabase/seed.sql; do
+  psql "$SUPABASE_DB_URL" -f "$f"
+done
 ```
 
-In the Supabase dashboard, enable **Authentication → Providers → Anonymous**. The app signs in
-anonymously on load, which gives every session a real `auth.uid()` so RLS is genuinely enforced
-rather than simulated.
+Then enable **Authentication → Providers → Anonymous** in the Supabase
+dashboard. That is the entire setup — no keys required for the app to run.
 
 ### Smoke test
 
 ```sql
-select name, category, round(distance_m) from nearby_places(40.7580, -73.9855, 'eat');
-select display_name, eta_min from nearby_guides(45.4408, 12.3155, 'boat');  -- Venice
+-- a food-and-nightlife traveler going to Osaka
+select left(name,38), city, score, reasons[1] from feed(5);
 ```
 
----
+## The engine
 
-## Sponsors, and why none of them can break the demo
+**Personalisation is deterministic, not learned.** Two reasons that is the right
+call and not just the fast one: a judge can be shown exactly why any card
+surfaced, and the same inputs always produce the same feed, so a demo cannot
+embarrass you by ranking differently on the third run.
 
-**Every integration runs at build time, never during judging.** That satisfies the sponsor
-requirement and the no-live-third-party-calls rule at the same time.
-
-- **ElevenLabs** — narration in 5 languages (multilingual v2 covers 29), pre-generated into
-  Supabase Storage. Audio is the *interface*, not a feature: a traveler is walking with their hands
-  full and their eyes on the street, so a screen is the wrong surface. It's also the honest
-  accessibility story — low literacy, low vision, unfamiliar script.
-- **Stay22** — monetized stays near a tour. Embed needs no API key.
-- **Tavily** — build-time enrichment: blurbs, "known for", hidden gems, long-tail local events
-  that no ticketing API carries.
-
-## Business model
-
-Ticket affiliate + Stay22 accommodation (30%+ commission) + guide booking fee. One night out
-monetizes three ways, and none of it is a subscription charged to the traveler.
-
-## Repo layout
+Score and explanation are produced by the same expression, so they cannot drift
+apart — the "why" on the card *is* the reason it ranked.
 
 ```
-supabase/migrations/   schema · functions · RLS · realtime · auth hook
-supabase/seed.sql      3 cities, 7 guides, 35 places, 7 events
-scripts/               ingestion, narration, guide simulator, demo reset
-web/                   the app — one map, one bottom sheet, zero navigation
-docs/                  build plan, architecture, demo script
+Because you like street food · In Shibuya, where you're staying
+Happening during your Osaka dates · Locally hosted, not on the tourist trail
 ```
+
+Signals: interest overlap, destination match, trip-date fit, budget fit, travel
+style, save/dismiss affinity by category, a locality bonus, and damped social
+proof. Full weighting table in [`docs/architecture.md`](docs/architecture.md).
+
+**Local over touristic.** `experiences.locality` (0–1) actively promotes
+locally-hosted, lesser-known things and drives the *Hidden local gems* rail.
+Well-known attractions are seeded deliberately — without them the score has
+nothing to rank against.
+
+## Media, and the one hard rule
+
+`experience_media` stores **pointers and attribution only**. No video is ever
+downloaded or rehosted; the schema has no column for it. Embeds resolve
+client-side through the official TikTok and Instagram oEmbed endpoints, both
+keyless as of 2026, with creator attribution rendered alongside.
+
+Everything ships seeded as `placeholder`, so the app looks finished with zero
+API keys. Swapping in a real post is a data change, not a code change.
+
+## Sponsors
+
+All integrations run **offline, before a demo**, and write to the database, so
+nothing in the request path can be broken by a third party being slow.
+
+| Sponsor | Role |
+|---|---|
+| **Stay22** | Direct Travel API — accommodation near a venue → `experiences.stay22_url` |
+| **Tavily** | Build-time enrichment: descriptions, hidden-gem signals, finding embeddable posts |
+| **AeroXplorer** | Optional arrival context; not on the core path |
+
+## Verified
+
+Applied and exercised against a real Postgres 16 + PostGIS instance:
+
+- Clean install of all four migrations plus seed
+- Two travelers with different profiles receive **genuinely different feeds** with different explanations
+- Budget, destination, and interest weighting all change ranking as intended
+- Full journey: onboarding → feed → dismiss → save → detail → itinerary → grouped by day
+- **RLS isolation**: traveler B sees 0 of traveler A's saves and itinerary, while both see all 20 catalogue rows; signed-out browsing still works
