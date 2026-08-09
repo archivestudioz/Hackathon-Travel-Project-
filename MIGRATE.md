@@ -34,6 +34,24 @@ against a scratch Next.js repo: every frontend file came back unmodified.
 If `docs/frontend.md` comes across, delete it — it documents the previous
 frontend and is the one file in `docs/` that is not engine material.
 
+## One required step: exclude `docs/` from the TypeScript build
+
+The `.ts` files in `docs/` are reference material to be **copied**, not compiled
+where they sit — `v0-adapter.ts` imports `./roam` and `./types`, which only
+resolve once it lives beside them in `lib/`.
+
+Most Next.js `tsconfig.json` files include `**/*.ts`, which sweeps `docs/` into
+the build and fails it. Next type-checks during `next build`, so this takes the
+Vercel production deploy down with it. Add `docs` to the exclude array:
+
+```json
+"exclude": ["node_modules", "docs"]
+```
+
+One line, and it belongs in the same commit as the engine — otherwise the build
+breaks the moment the branch merges, and the cause is a directory nobody thinks
+of as code.
+
 ## Wiring it up — three steps
 
 **1. Database.** Follow [`supabase/README.md`](supabase/README.md): six pastes
