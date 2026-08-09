@@ -123,23 +123,72 @@ export interface ItineraryDay {
 
 ---
 
-## Stage 1 — profile
+## Stage 1 — onboarding, one screen
+
+Onboarding is **one screen and three taps**. Not a form — a grid of real
+experience cards with "tap three that look good". Tapping art feels like play;
+a checklist feels like admin, and admin is where casual users leave.
+
+The taps also carry far more signal than checkboxes would: choosing three cards
+reveals category, price tolerance, and how touristy someone likes things, all at
+once. Interests are **derived from the taps, never asked for**.
 
 | Function | Args | Returns |
 |---|---|---|
-| `onboarding_options()` | — | `{ countries[], interests[], reasons[] }` |
-| `save_profile_onboarding(...)` | `p_interests text[]`, `p_countries text[]`, `p_reasons text[]` | the taste row |
-| `my_profile()` | — | identity, taste, `saved_count`, `trip_count`, `active_trip` |
-| `update_profile(...)` | `p_display_name`, `p_avatar_url`, `p_about` | the profile row |
+| `cold_start_picks(p_country?, p_limit?)` | default `'JP'`, `12` | 12 diverse cards — one per category, spread across the locality range |
+| `complete_cold_start(p_experience_ids[], p_countries?)` | uuid[] | `{ onboarded, saved, derived_interests, countries }` |
+| `my_profile()` | — | identity, taste, counts, `active_trip` |
+| `update_profile(...)` | `p_display_name`, `p_avatar_url`, `p_about`, `p_age_band` | the profile row |
+| `my_taste()` | — | `{ confidence, declared[], learned[] }` |
 
-Render the chips from `onboarding_options()` rather than hardcoding them, or the
-list will drift from what scoring understands. `countries[].available` marks
-where we actually have inventory — offer the rest as aspiration, not as a
-promise.
+```ts
+const { data: picks } = await supabase.rpc('cold_start_picks', { p_country: 'JP' })
+// render picks as a 3×4 grid of images; require 3 taps
+await supabase.rpc('complete_cold_start', { p_experience_ids: chosen })
+// → straight to the feed. Saved tab already has 3 things in it.
+```
 
-`p_about` is the free-text box on the profile screen. It is not decorative:
-scoring matches it against tags and emits *"Matches what you wrote on your
-profile"*.
+**The taps become real saves**, so the traveler never lands on an empty Saved
+tab. That is deliberate — the first screen after signup should never be blank.
+
+### What the algorithm does instead of asking
+
+`interest_affinity()` scores every interest from behaviour, weighted by what
+each action costs the traveler:
+
+| Signal | Weight |
+|---|---|
+| Added to an itinerary | **+1.5** — they committed |
+| Saved / tapped at cold start | +1.0 |
+| Dismissed | −0.75 |
+
+`learned_confidence()` ramps 0 → 1 across roughly twenty interactions. Scoring
+blends the two: declared taste carries a brand-new account, learned taste takes
+over as evidence accumulates. Card explanations follow — once confidence passes
+0.3 the reason changes from *"Because you like restaurants"* to
+**"More like the food you keep saving"**, which is both truer and more
+persuasive.
+
+Verified: after three taps plus four swipes, the engine had independently
+learned `food +5.0 · nightlife +3.0 · traditional +2.0 · art −1.5` and re-ranked
+the feed accordingly — with **nothing asked beyond the three taps**.
+
+### Age
+
+`p_age_band` on `update_profile` takes `under_18 · 18_24 · 25_34 · 35_44 ·
+45_54 · 55_plus · undisclosed`. A band rather than a birthday: it never goes
+stale, it is far less regulated personal data, and it does the one job age
+genuinely needs to do here — `under_18` **hard-filters** bars, nightclubs, and
+anything tagged `alcohol` out of the feed entirely. Not ranked lower; absent.
+
+`undisclosed` is treated as an adult, so declining to answer never silently
+degrades the product.
+
+### Optional: declared interests
+
+`save_profile_onboarding(p_interests[], p_countries[], p_reasons[])` still
+exists for the minority who want to curate their own taste from the profile
+screen. It is no longer the primary path and should not appear during signup.
 
 ## Stage 2 — trips
 

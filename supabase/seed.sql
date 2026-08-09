@@ -68,10 +68,16 @@ insert into interests (slug, label_en, emoji, sort) values
 
 -- ---------------------------------------------------------------- cities --
 
-insert into cities (country_code, slug, name_en, name_ja, center) values
-  ('JP','tokyo', 'Tokyo', '東京', st_makepoint(139.6503, 35.6762)::geography),
-  ('JP','kyoto', 'Kyoto', '京都', st_makepoint(135.7681, 35.0116)::geography),
-  ('JP','osaka', 'Osaka', '大阪', st_makepoint(135.5023, 34.6937)::geography);
+-- Bounding boxes are what scripts/ingest_places.py hands to Overpass, so they
+-- live with the city rather than in a migration that would run before them.
+insert into cities (country_code, slug, name_en, name_ja, center,
+                    bbox_min_lng, bbox_min_lat, bbox_max_lng, bbox_max_lat) values
+  ('JP','tokyo', 'Tokyo', '東京', st_makepoint(139.6503, 35.6762)::geography,
+   139.6300, 35.6200, 139.8100, 35.7400),   -- core 23 wards
+  ('JP','kyoto', 'Kyoto', '京都', st_makepoint(135.7681, 35.0116)::geography,
+   135.6500, 34.9500, 135.8100, 35.0700),   -- Arashiyama through to Fushimi
+  ('JP','osaka', 'Osaka', '大阪', st_makepoint(135.5023, 34.6937)::geography,
+   135.4700, 34.6300, 135.5400, 34.7300);   -- Namba up to Tenma
 
 insert into neighborhoods (city_id, slug, name_en, name_ja, center, blurb)
 select c.id, v.slug, v.name_en, v.name_ja, st_makepoint(v.lng, v.lat)::geography, v.blurb
@@ -256,7 +262,10 @@ from (values
    'Fushimi Sake Brewery Tasting','伏見 酒蔵めぐり',
    'Soft water, eighteen breweries, and the ones that still open their doors.',
    'Fushimi''s water is softer than Nada''s, which is why the sake is rounder. Three working breweries, a tasting flight at each, and a walk along the Horikawa canal between them. Most tourists in Fushimi only see the torii gates two kilometres north.',
-   'food','{food,traditional,group-friendly}', interval '50 hours', 180, 'Daily except Monday',
+   -- 'alcohol' is load-bearing, not descriptive: is_adults_only() reads it, and
+   -- without it a sake tasting reaches an under_18 feed because its category is
+   -- 'food'. Any experience that serves drink needs this tag.
+   'food','{food,traditional,alcohol,group-friendly}', interval '50 hours', 180, 'Daily except Monday',
    false, 2800, 'Nine tastings', 'Fushimi Sake District','Fushimi Ward, Kyoto',
    135.7620, 34.9330, null, null, 0.81, 127, 24),
 
