@@ -259,8 +259,19 @@ while both see all 26 catalogue rows, and signed-out browsing still works.*
 
 ## 17. Seeded content
 
-26 experiences · 11 categories · 19 neighbourhoods · 25 hosts · 14 interests ·
+36 experiences · 13 categories · 19 neighbourhoods · 25 hosts · 14 interests ·
 10 countries · 3 cities (Tokyo, Kyoto, Osaka)
+
+Ten of the 36 exist because there is **real short-form video** of them —
+`content/video-catalog.md` catalogues 39 clips the team pulled from TikTok and
+Instagram, and `content/clip-map.tsv` triages every one. Fifteen are elsewhere
+in Japan, two are in Brooklyn, ten have no identifiable venue; the map says so
+per clip rather than quietly using a third and implying it used all of them.
+
+That pass closed two real holes. **Kyoto had zero nightlife rows** — not thin,
+zero — so a Kyoto leg left every evening empty. And **Osaka's lowest locality
+was 0.55**, meaning "hidden local gems" in Osaka ranked against nothing;
+Umeda Sky Building now sits at 0.15 on purpose.
 
 Weighted toward locally-organised and time-sensitive things, with a few
 well-known attractions included deliberately — without them the locality score

@@ -75,7 +75,11 @@ supabase/migrations/0008_guest_*.sql    guest mode, exploration vs exploitation
 supabase/migrations/0009_accounts.sql   auth triggers, session_state()
 supabase/migrations/0010_attribution.sql creator credit, enforced by constraint
 supabase/migrations/0011_multicity_*.sql trip legs, build_itinerary()
+supabase/migrations/0012_gambling_*.sql  age gate covers kyotei betting
 supabase/seed.sql                       10 countries, 3 cities, 19 neighborhoods, 26 experiences
+supabase/seed_catalog.sql               10 more, seeded because there is real video of them
+content/video-catalog.md                39 clips your team pulled, described
+content/clip-map.tsv                    which reach the product, and why the rest do not
 ```
 
 ## Setup
@@ -83,7 +87,7 @@ supabase/seed.sql                       10 countries, 3 cities, 19 neighborhoods
 ```bash
 cp .env.example .env        # fill in Supabase credentials
 
-for f in supabase/migrations/*.sql supabase/seed.sql; do
+for f in supabase/migrations/*.sql supabase/seed.sql supabase/seed_catalog.sql; do
   psql "$SUPABASE_DB_URL" -f "$f"
 done
 ```
