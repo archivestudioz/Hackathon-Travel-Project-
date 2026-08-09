@@ -20,6 +20,30 @@ this product would use in production anyway.
 
 - **[`docs/architecture.md`](docs/architecture.md)** — system diagram, ER model, end-to-end dataflow, scoring breakdown
 - **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, media rendering rules
+- **[`docs/roam-client.ts`](docs/roam-client.ts)** — drop-in typed client. Copy this one file into the Next.js app and the integration is done.
+
+## Integrating the UI
+
+The engine is 30 RPC functions and one card shape. There is no REST layer to
+learn and no ORM to configure.
+
+```bash
+npm i @supabase/supabase-js          # in the UI repo
+cp ../engine/docs/roam-client.ts src/lib/roam.ts
+```
+
+```ts
+import { getSessionState, getFeed, saveExperience } from '@/lib/roam'
+
+const state = await getSessionState()   // route on state.next_screen
+const cards = await getFeed()           // ExperienceCard[], already ranked
+await saveExperience(cards[0].experience_id)
+```
+
+`ExperienceCard` is identical from `feed()` and `explore()`, so the team builds
+**one** card component and reuses it on every surface. Each card arrives with
+its media, its social proof, whether you have saved it, and `reasons[0]` —
+the line explaining why it surfaced.
 
 ```
 supabase/migrations/0001_schema.sql     tables, generated lat/lng, triggers
