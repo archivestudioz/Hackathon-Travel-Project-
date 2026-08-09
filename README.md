@@ -1,13 +1,54 @@
-# Japan travel discovery — backend engine
+# Meguri — Japan travel discovery
 
-A personalised, social-media-style discovery feed for locally hosted events and
-experiences in **Tokyo, Kyoto, and Osaka**. Travelers increasingly find what to
-do through short-form video, but turning that inspiration into an actual
-itinerary is fragmented. This engine connects visual discovery to real event
-details, saving, and day-by-day planning.
+A mobile-first discovery app for locally hosted events, festivals and experiences
+across **Tokyo, Kyoto and Osaka**, and for turning what you find into a
+day-by-day itinerary.
 
-**Scope: backend and engine only.** The UI is built by a separate team against
-[`docs/api-contract.md`](docs/api-contract.md).
+Travellers increasingly find what to do through short-form video, but turning
+that inspiration into an actual plan is fragmented. Meguri connects visual
+discovery directly to event details, saving, and scheduling.
+
+---
+
+## Two halves, one repo
+
+| | Where | Runs on | Status |
+|---|---|---|---|
+| **App** — swipe deck, detail sheets, scheduling, itinerary chat | `src/`, `preview/` | Local mock data + `localStorage`. No keys, no database. | Demo-ready standalone |
+| **Engine** — schema, scoring, planner, RLS | `supabase/`, `scripts/`, `docs/` | Postgres 16 + PostGIS via Supabase | Verified against a real instance |
+
+**They are not wired together yet, and that is deliberate.** The app ships its
+own `src/lib/scoring.ts`, `src/lib/itinerary.ts` and `src/lib/data/experiences.ts`
+so it demos with nothing running — which is the right call for a judging table
+with unreliable wifi. The engine implements the same concepts in Postgres, at
+real data volume, with authorization in the database.
+
+`src/lib/storage.ts` is the seam between them. It defines a `Repository`
+interface the whole app talks through; connecting to the engine means writing a
+second implementation of that interface and changing one line in `AppStore`.
+[`docs/backend-features.md`](docs/backend-features.md) has the full migration
+path, and [`docs/roam-client.ts`](docs/roam-client.ts) is the client that would
+back it.
+
+### Run the app
+
+```bash
+npm install
+npm run dev        # http://localhost:3000
+```
+
+No API keys, no database, no external services. Full walkthrough, design
+system, and demo script in **[`docs/frontend.md`](docs/frontend.md)**.
+
+### Run the engine
+
+```bash
+cp .env.example .env
+```
+
+Then paste [`supabase/ALL.sql`](supabase/ALL.sql) into the Supabase dashboard
+SQL editor and enable **Authentication → Providers → Anonymous**. One paste,
+every migration and both seeds. Details below.
 
 ---
 

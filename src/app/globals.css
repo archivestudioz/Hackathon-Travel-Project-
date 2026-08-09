@@ -1,0 +1,186 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ */
+/* Design tokens                                                       */
+/* ------------------------------------------------------------------ */
+
+@theme {
+  /* Photography carries the colour. The palette stays deliberately narrow:
+     a warm paper base, near-black ink, and one accent vermillion reserved for
+     saving, active nav, match chips and the timeline "now" marker. */
+  --color-base: #faf8f5;
+  --color-paper: #ffffff;
+  --color-sand: #f2ede5;
+  --color-ink: #141210;
+  --color-ink-soft: #6a625a;
+  --color-ink-faint: #9a9088;
+  --color-line: #e7e1d8;
+  --color-accent: #d94f3d;
+  --color-accent-deep: #b03828;
+  --color-accent-soft: #fbeae6;
+  --color-night: #16130f;
+  --color-night-soft: #221d18;
+  --color-success: #2f7d5e;
+  --color-success-soft: #e6f2ec;
+  --color-warning: #b5761f;
+  --color-warning-soft: #fbf1e0;
+
+  --radius-lg: 28px;
+  --radius-md: 16px;
+  --radius-sm: 10px;
+
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-display), Georgia, "Times New Roman", serif;
+
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ------------------------------------------------------------------ */
+/* Base                                                                */
+/* ------------------------------------------------------------------ */
+
+* {
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: var(--color-night);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior-y: none;
+}
+
+/* Respect the traveller's motion preference throughout. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ------------------------------------------------------------------ */
+/* Utilities                                                           */
+/* ------------------------------------------------------------------ */
+
+@utility hide-scrollbar {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Bottom-up gradient behind overlay text so contrast holds on any image. */
+@utility scrim {
+  background: linear-gradient(
+    to top,
+    rgba(8, 6, 5, 0.92) 0%,
+    rgba(8, 6, 5, 0.78) 22%,
+    rgba(8, 6, 5, 0.42) 48%,
+    rgba(8, 6, 5, 0.08) 72%,
+    rgba(8, 6, 5, 0) 100%
+  );
+}
+
+@utility scrim-top {
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 6, 5, 0.55) 0%,
+    rgba(8, 6, 5, 0.18) 55%,
+    rgba(8, 6, 5, 0) 100%
+  );
+}
+
+@utility label-xs {
+  font-size: 11px;
+  line-height: 14px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+@utility text-balance-tight {
+  text-wrap: balance;
+  letter-spacing: -0.02em;
+}
+
+@utility glass {
+  background: rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px) saturate(140%);
+  -webkit-backdrop-filter: blur(14px) saturate(140%);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+}
+
+@utility glass-light {
+  background: rgba(250, 248, 245, 0.82);
+  backdrop-filter: blur(18px) saturate(160%);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+}
+
+/* ------------------------------------------------------------------ */
+/* Motion                                                              */
+/* ------------------------------------------------------------------ */
+
+@keyframes shimmer {
+  0% { background-position: -400px 0; }
+  100% { background-position: 400px 0; }
+}
+
+@utility skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.13) 50%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  background-size: 800px 100%;
+  animation: shimmer 1.6s linear infinite;
+}
+
+@keyframes kenburns {
+  0% { transform: scale(1.06) translate3d(0, 0, 0); }
+  50% { transform: scale(1.16) translate3d(-1.5%, -1.5%, 0); }
+  100% { transform: scale(1.06) translate3d(0, 0, 0); }
+}
+
+/* Slow drift on generated artwork so cards read as motion, not stills. */
+@utility ken-burns {
+  animation: kenburns 22s var(--ease-out-soft) infinite;
+  will-change: transform;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.9); opacity: 0.7; }
+  70% { transform: scale(1.6); opacity: 0; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+@utility pulse-ring {
+  animation: pulse-ring 1.8s var(--ease-out-soft) infinite;
+}
+
+/* ------------------------------------------------------------------ */
+/* Focus                                                               */
+/* ------------------------------------------------------------------ */
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* Keyboard users get a visible ring on the deck card; pointer users don't. */
+.deck-card:focus-visible {
+  outline: 3px solid var(--color-accent);
+  outline-offset: 4px;
+}

@@ -1,22 +1,46 @@
+# ─────────────────────────────────────────────────────────── frontend (Meguri)
+/node_modules
+/.pnp
+.pnp.*
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
+
+/coverage
+/.next/
+/out/
+/build
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# Single-file preview build output
+preview/dist/
+
+# ──────────────────────────────────────────────────────────── backend (engine)
 .env
 .env.local
-web/config.js
-
-# Protomaps offline extracts — fetched by scripts/fetch_tiles.sh, too big for git
-web/tiles/*.pmtiles
-
-# Generated ElevenLabs audio before it is uploaded to Supabase Storage
-build/audio/
+.env*
+*.pem
 
 __pycache__/
 *.py[cod]
 .venv/
 venv/
-node_modules/
+
+# ────────────────────────────────────────────────────────────────────── shared
 .DS_Store
 
 # Downloaded source video. Never committed, never deployed, never rehosted —
 # only the post URLs are used, via official oEmbed. See scripts/attach_media.py
+# and content/video-catalog.md.
 *.mp4
 *.mov
 *.webm
