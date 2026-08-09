@@ -23,13 +23,6 @@ PostgREST, and Postgres enforces every permission itself via Row Level Security.
 That removes the tier which usually breaks under time pressure, and RLS is what
 this product would use in production anyway.
 
-- **[`docs/backend-features.md`](docs/backend-features.md)** — complete feature inventory and the frontend migration path
-- **[`docs/architecture.md`](docs/architecture.md)** — system diagram, ER model, end-to-end dataflow, scoring breakdown
-- **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, media rendering rules
-- **[`docs/roam-client.ts`](docs/roam-client.ts)** — drop-in typed client. Copy this one file into the Next.js app and the integration is done.
-- **[`docs/fixtures.ts`](docs/fixtures.ts)** — real recorded payloads, so screens can be built before the backend exists.
-- **[`docs/itinerary-agent.ts`](docs/itinerary-agent.ts)** + **[`docs/itinerary-chat-route.ts`](docs/itinerary-chat-route.ts)** — the AI chat sheet. **Server only.**
-
 ## Integrating the UI
 
 The engine is 36 RPC functions and one card shape. There is no REST layer to
@@ -37,7 +30,7 @@ learn and no ORM to configure.
 
 ```bash
 npm i @supabase/supabase-js          # in the UI repo
-cp ../engine/docs/roam-client.ts src/lib/roam.ts
+cp docs/roam-client.ts src/lib/roam.ts
 ```
 
 ```ts
@@ -97,7 +90,7 @@ for f in supabase/migrations/*.sql supabase/seed.sql supabase/seed_catalog.sql; 
 done
 ```
 
-Then enable **Authentication → Providers → Anonymous** in the Supabase
+Then enable **Authentication → Sign In / Providers → Allow anonymous sign-ins** in the Supabase
 dashboard. That is the entire setup — no keys required for the app to run.
 
 ### Smoke test
