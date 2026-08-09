@@ -18,6 +18,7 @@ PostgREST, and Postgres enforces every permission itself via Row Level Security.
 That removes the tier which usually breaks under time pressure, and RLS is what
 this product would use in production anyway.
 
+- **[`docs/backend-features.md`](docs/backend-features.md)** — complete feature inventory and the frontend migration path
 - **[`docs/architecture.md`](docs/architecture.md)** — system diagram, ER model, end-to-end dataflow, scoring breakdown
 - **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, media rendering rules
 - **[`docs/roam-client.ts`](docs/roam-client.ts)** — drop-in typed client. Copy this one file into the Next.js app and the integration is done.
