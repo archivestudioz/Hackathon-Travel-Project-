@@ -32,7 +32,6 @@ values
 
 -- ------------------------------------------------------------------ guides --
 
-with c as (select slug, id from cities)
 insert into profiles (id, role, display_name, avatar_url, bio, languages)
 values
   ('11111111-1111-4111-8111-000000000001', 'guide', 'Mateo Ruiz',    null, 'Lower East Side born. I will feed you until you beg me to stop.', '{en,es}'),
@@ -67,7 +66,8 @@ select profile_id, true, home_point from guide_profiles;
 
 -- New York
 insert into places (city_id, name, category, themes, blurb, hidden_gem, point, has_wifi, wifi_fee, wheelchair)
-select c.id, v.name, v.category, v.themes, v.blurb, v.gem,
+-- themes needs an explicit cast: inside a VALUES list an array literal infers as text.
+select c.id, v.name, v.category, v.themes::text[], v.blurb, v.gem,
        st_makepoint(v.lng, v.lat)::geography, v.wifi, v.fee, v.wc
 from cities c, (values
   ('Katz''s Delicatessen',   'eat',        '{eat,culture}',        'Cutting pastrami by hand since 1888. Do not lose the ticket they hand you at the door.', false, -73.9874, 40.7223, false, null,  'yes'),
@@ -88,7 +88,8 @@ where c.slug = 'nyc';
 
 -- San Juan
 insert into places (city_id, name, category, themes, blurb, hidden_gem, point, has_wifi, wifi_fee, wheelchair)
-select c.id, v.name, v.category, v.themes, v.blurb, v.gem,
+-- themes needs an explicit cast: inside a VALUES list an array literal infers as text.
+select c.id, v.name, v.category, v.themes::text[], v.blurb, v.gem,
        st_makepoint(v.lng, v.lat)::geography, v.wifi, v.fee, v.wc
 from cities c, (values
   ('Castillo San Felipe del Morro', 'attraction', '{attraction,history}', 'Six levels of fortress aimed at an ocean that kept sending ships.',        false, -66.1241, 18.4709, false, null, 'limited'),
@@ -106,7 +107,8 @@ where c.slug = 'sju';
 
 -- Venice
 insert into places (city_id, name, category, themes, blurb, hidden_gem, point, has_wifi, wifi_fee, wheelchair)
-select c.id, v.name, v.category, v.themes, v.blurb, v.gem,
+-- themes needs an explicit cast: inside a VALUES list an array literal infers as text.
+select c.id, v.name, v.category, v.themes::text[], v.blurb, v.gem,
        st_makepoint(v.lng, v.lat)::geography, v.wifi, v.fee, v.wc
 from cities c, (values
   ('Piazza San Marco',            'attraction', '{attraction,culture}',  'Napoleon called it the drawing room of Europe. It floods most winters.',   false, 12.3388, 45.4341, true,  'no', 'yes'),

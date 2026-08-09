@@ -158,7 +158,9 @@ begin
   select * into v_guide
     from nearby_guides(p_lat, p_lng, p_mode, p_theme, p_language, 1);
 
-  if v_guide is null then
+  -- NOT FOUND rather than `v_guide is null`: a record only tests as null when
+  -- every one of its fields is null, which is a different question.
+  if not found then
     raise exception 'no % guide available within % m', p_mode, mode_radius_m(p_mode);
   end if;
 
