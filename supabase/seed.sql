@@ -17,26 +17,61 @@
 
 begin;
 
+-- ------------------------------------------------------------- vocabularies --
+
+-- Countries a traveler can name at signup. `available` is honest about where we
+-- actually have inventory, so onboarding can ask the broad question ("where do
+-- you like to travel?") without pretending to have content everywhere.
+insert into countries (code, name_en, emoji, available, sort) values
+  ('JP','Japan',         '🇯🇵', true,  1),
+  ('KR','South Korea',   '🇰🇷', false, 2),
+  ('TW','Taiwan',        '🇹🇼', false, 3),
+  ('TH','Thailand',      '🇹🇭', false, 4),
+  ('VN','Vietnam',       '🇻🇳', false, 5),
+  ('IT','Italy',         '🇮🇹', false, 6),
+  ('ES','Spain',         '🇪🇸', false, 7),
+  ('PT','Portugal',      '🇵🇹', false, 8),
+  ('MX','Mexico',        '🇲🇽', false, 9),
+  ('US','United States', '🇺🇸', false, 10);
+
+-- Why someone travels — a different axis from what they like. Two people who
+-- both pick "food" want very different trips depending on whether they answered
+-- "big night out" or "slow reset".
+insert into travel_reasons (slug, label_en, emoji, sort) values
+  ('vacation',   'Just a holiday',        '🌴', 1),
+  ('food',       'Eating my way around', '🍜', 2),
+  ('culture',    'Culture and history',  '⛩', 3),
+  ('adventure',  'Adventure and hiking', '🥾', 4),
+  ('nightlife',  'Going out',            '🌃', 5),
+  ('reset',      'Rest and reset',       '♨️', 6),
+  ('photography','Photography',          '📷', 7),
+  ('anime',      'Anime and gaming',     '🎮', 8),
+  ('business',   'Work trip',            '💼', 9),
+  ('friends',    'Visiting people',      '👋', 10);
+
 -- ------------------------------------------------------------- interests --
 
 insert into interests (slug, label_en, emoji, sort) values
-  ('food',        'Food & drink',        '🍜', 1),
-  ('nightlife',   'Nightlife',           '🌃', 2),
-  ('art',         'Art & design',        '🎨', 3),
-  ('anime',       'Anime & gaming',      '🎮', 4),
-  ('music',       'Live music',          '🎧', 5),
-  ('nature',      'Nature & outdoors',   '🌿', 6),
-  ('shopping',    'Shopping & vintage',  '🛍', 7),
-  ('festival',    'Festivals',           '🎏', 8),
-  ('wellness',    'Wellness & onsen',    '♨️', 9),
-  ('traditional', 'Traditional culture', '⛩', 10);
+  ('food',        'Restaurants & food',  '🍜', 1),
+  ('nightlife',   'Bars & nightclubs',   '🌃', 2),
+  ('nature',      'Nature & parks',      '🌿', 3),
+  ('hiking',      'Hiking & trails',     '🥾', 4),
+  ('beach',       'Beaches',             '🏖', 5),
+  ('art',         'Art & design',        '🎨', 6),
+  ('anime',       'Anime & gaming',      '🎮', 7),
+  ('music',       'Live music',          '🎧', 8),
+  ('shopping',    'Shopping & vintage',  '🛍', 9),
+  ('festival',    'Festivals',           '🎏', 10),
+  ('wellness',    'Wellness & onsen',    '♨️', 11),
+  ('traditional', 'Traditional culture', '⛩', 12),
+  ('market',      'Markets',             '🧺', 13);
 
 -- ---------------------------------------------------------------- cities --
 
-insert into cities (slug, name_en, name_ja, center) values
-  ('tokyo', 'Tokyo', '東京', st_makepoint(139.6503, 35.6762)::geography),
-  ('kyoto', 'Kyoto', '京都', st_makepoint(135.7681, 35.0116)::geography),
-  ('osaka', 'Osaka', '大阪', st_makepoint(135.5023, 34.6937)::geography);
+insert into cities (country_code, slug, name_en, name_ja, center) values
+  ('JP','tokyo', 'Tokyo', '東京', st_makepoint(139.6503, 35.6762)::geography),
+  ('JP','kyoto', 'Kyoto', '京都', st_makepoint(135.7681, 35.0116)::geography),
+  ('JP','osaka', 'Osaka', '大阪', st_makepoint(135.5023, 34.6937)::geography);
 
 insert into neighborhoods (city_id, slug, name_en, name_ja, center, blurb)
 select c.id, v.slug, v.name_en, v.name_ja, st_makepoint(v.lng, v.lat)::geography, v.blurb
@@ -197,7 +232,7 @@ from (values
    'Arashiyama Bamboo Grove at Dawn','嵐山 竹林の朝',
    'The famous grove, at 6am, before the buses.',
    'The bamboo grove is genuinely extraordinary and genuinely ruined by 9am. A local photographer meets you at 5:45, walks you through while it is still empty, and continues to the Hozu riverbank and a temple garden most day-trippers never reach. Bring a jacket.',
-   'nature','{nature,traditional,romantic,solo-friendly}', interval '26 hours', 150, 'Daily, weather permitting',
+   'nature','{nature,hiking,traditional,romantic,solo-friendly}', interval '26 hours', 150, 'Daily, weather permitting',
    false, 2500, null, 'Arashiyama Bamboo Grove','Ukyo Ward, Kyoto',
    135.6668, 35.0094, null, null, 0.45, 456, 132),
 

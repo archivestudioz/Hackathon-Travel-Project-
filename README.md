@@ -26,7 +26,7 @@ supabase/migrations/0001_schema.sql     tables, generated lat/lng, triggers
 supabase/migrations/0002_scoring.sql    experience_cards view, scoring, feed()
 supabase/migrations/0003_actions.sql    every button in the product
 supabase/migrations/0004_rls.sql        authorization, in the database
-supabase/seed.sql                       3 cities, 19 neighborhoods, 20 hosts, 20 experiences
+supabase/seed.sql                       10 countries, 3 cities, 19 neighborhoods, 20 experiences
 ```
 
 ## Setup
@@ -48,6 +48,34 @@ dashboard. That is the entire setup — no keys required for the app to run.
 -- a food-and-nightlife traveler going to Osaka
 select left(name,38), city, score, reasons[1] from feed(5);
 ```
+
+## Two-stage onboarding
+
+Signup asks **broad questions only** — which countries you travel to, why you
+travel, what you are into. No city, no dates, no budget: those are trip
+questions, and asking them at signup would force someone to have a trip planned
+before they are allowed to look at anything.
+
+The deeper questions come later, when the traveler decides to plan: exact city,
+dates and duration, the neighbourhood they are staying in, party, budget, pace.
+
+| | Stage 1 — profile | Stage 2 — trip |
+|---|---|---|
+| When | Signup | "Create an itinerary" |
+| Scope | Evergreen, one per person | One per journey, many allowed |
+| Table | `traveler_profiles` | `trips` |
+
+**The feed works in both states.** With no trip it is an *inspiration* feed on
+interests, countries, and reasons — nothing is penalised for being in the wrong
+city, because the traveler has not said where they are going. Create a trip and
+it becomes a *planning* feed where city, dates, and budget all count.
+
+Saves live on the **profile**, not a trip, so someone can save a Kyoto workshop
+eighteen months out; `trip_suggestions()` hands it back when they finally plan
+Kyoto. That bridge is why the two tables are separate.
+
+There is no password and no email — anonymous auth means a traveler is scrolling
+within seconds, and onboarding can be skipped entirely without the app breaking.
 
 ## The engine
 
@@ -100,6 +128,10 @@ Applied and exercised against a real Postgres 16 + PostGIS instance:
 
 - Clean install of all four migrations plus seed
 - Two travelers with different profiles receive **genuinely different feeds** with different explanations
+- The **inspiration feed works with no trip**, and creating one visibly re-ranks it toward that city
+- Skipping onboarding entirely still returns a sensible feed — no blank screen
 - Budget, destination, and interest weighting all change ranking as intended
-- Full journey: onboarding → feed → dismiss → save → detail → itinerary → grouped by day
+- Full journey: signup → feed → save → create trip → suggestions → itinerary grouped by day
+- A second trip leaves taste and the first trip untouched
+- Itinerary days are clamped inside the trip window
 - **RLS isolation**: traveler B sees 0 of traveler A's saves and itinerary, while both see all 20 catalogue rows; signed-out browsing still works

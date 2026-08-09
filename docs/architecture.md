@@ -37,15 +37,19 @@ hackathon shortcut.
 ║                                                                            ║
 ║  ── RLS ─────────────────────────────────────────────────────────────────  ║
 ║   catalogue (cities, experiences, media, hosts)   → public read            ║
-║   personal  (prefs, saves, dismissals, itinerary) → owner only,            ║
-║                                                     via current_profile_id ║
+║   personal  (taste, trips, saves, dismissals,     → owner only,            ║
+║              itinerary)                             via current_profile_id ║
 ║                                                                            ║
 ║  ── FUNCTIONS = the entire API ──────────────────────────────────────────  ║
-║   read    feed · explore · explore_sections · experience_detail            ║
-║           my_saved · my_itinerary · my_profile · onboarding_options        ║
-║   write   save_onboarding · update_profile · save/unsave_experience        ║
-║           dismiss_experience · undo_dismiss · share_experience             ║
-║           add_to_itinerary · update_itinerary_entry · remove_from_itinerary║
+║   stage 1  onboarding_options · save_profile_onboarding                    ║
+║            my_profile · update_profile                                     ║
+║   stage 2  trip_options · create_trip · update_trip · delete_trip          ║
+║            my_trips · trip_suggestions                                     ║
+║   read     feed · explore · explore_sections · experience_detail           ║
+║            my_saved · my_itinerary                                         ║
+║   write    save/unsave_experience · dismiss_experience · undo_dismiss      ║
+║            share_experience · add_to_itinerary                             ║
+║            update_itinerary_entry · remove_from_itinerary                  ║
 ║                                                                            ║
 ║  ── VIEW ────────────────────────────────────────────────────────────────  ║
 ║   experience_cards   one card shape reused by every surface                ║
@@ -76,6 +80,7 @@ watching.
 
 ```mermaid
 erDiagram
+    countries ||--o{ cities : contains
     cities ||--o{ neighborhoods : contains
     cities ||--o{ experiences : hosts
     neighborhoods ||--o{ experiences : locates
@@ -83,10 +88,11 @@ erDiagram
     experiences ||--o{ experience_media : "has pointers to"
 
     auth_users ||--|| profiles : "mints on signup"
-    profiles ||--|| traveler_preferences : "onboarding"
-    profiles ||--o{ saved_items : saves
+    profiles ||--|| traveler_profiles : "STAGE 1 evergreen taste"
+    profiles ||--o{ trips : "STAGE 2 one per journey"
+    trips ||--o{ itinerary_entries : schedules
+    profiles ||--o{ saved_items : "saves (profile-level)"
     profiles ||--o{ dismissed_items : dismisses
-    profiles ||--o{ itinerary_entries : schedules
     profiles ||--o{ share_events : shares
 
     experiences ||--o{ saved_items : "saved by"
@@ -130,18 +136,29 @@ erDiagram
         text attribution_url
         bool is_primary
     }
-    traveler_preferences {
+    traveler_profiles {
         uuid profile_id PK
-        text_array interests
-        text_array destinations "city slugs"
-        date trip_start
-        date trip_end
+        text_array interests "what you like"
+        text_array countries "where you travel"
+        text_array reasons "why you travel"
+        bool onboarded
+    }
+    trips {
+        uuid id PK
+        uuid profile_id FK
+        uuid city_id FK "exact city of stay"
+        uuid neighborhood_id FK "where you sleep"
+        date start_date
+        date end_date
+        int duration_days "generated"
+        enum party
         enum budget
-        enum style
+        enum pace
+        enum status "planning|active|past"
     }
     itinerary_entries {
         uuid id PK
-        uuid profile_id FK
+        uuid trip_id FK
         uuid experience_id FK
         date day
         int position
@@ -149,7 +166,18 @@ erDiagram
     }
 ```
 
-### Three modelling decisions worth defending
+### Four modelling decisions worth defending
+
+**Taste and trips are separate tables.** `traveler_profiles` holds what a person
+is into, forever. `trips` holds one journey. Conflating them — which the first
+version did — means a traveler can only ever have one trip, editing dates
+clobbers their interests, and the feed cannot work until they commit to
+travelling. That last one is fatal for a product people scroll for inspiration
+long before they book.
+
+**Saves are profile-level, not trip-level.** Someone saves a Kyoto workshop
+eighteen months out, and `trip_suggestions()` hands it back when they finally
+plan Kyoto. That bridge is the payoff of keeping the two apart.
 
 **Events and attractions are one table.** The difference between "Tenjin Matsuri
 on the 24th" and "teamLab, open daily" is whether `starts_at` is null — not what
@@ -169,7 +197,153 @@ category, not just hide one card.
 
 ---
 
-## 3. End-to-end dataflow — the demo journey
+## 3. Signup workflow, end to end
+
+Signup asks **broad questions only**. Where do you travel, why do you travel,
+what are you into. It does not ask for a city, dates, or a budget — those are
+trip questions, and asking them at signup would force someone to have a trip
+planned before they are allowed to look at anything.
+
+There is **no password and no email**. Anonymous auth means the traveler is
+scrolling within seconds of opening the app, and the account can be upgraded to
+a real one later without losing a single save.
+
+```
+┌──────────────┐
+│  App opens   │
+└──────┬───────┘
+       ▼
+  session in
+  localStorage? ──── yes ──►┌────────────────────┐
+       │                    │ my_profile()       │
+       no                   └─────────┬──────────┘
+       │                              │
+       ▼                        onboarded?
+┌──────────────────────┐         │        │
+│ signInAnonymously()  │        yes      no
+└──────────┬───────────┘         │        │
+           │                     ▼        └──────────┐
+           ▼               ┌──────────┐              │
+   ┌───────────────────┐   │   FEED   │              │
+   │ TRIGGER (Postgres)│   └──────────┘              │
+   │  on auth.users    │                             │
+   │  ├ INSERT profiles│                             │
+   │  └ INSERT         │◄────────────────────────────┘
+   │    traveler_      │
+   │    profiles (empty)│   nothing to configure — the row
+   └─────────┬─────────┘    already exists, onboarding UPDATEs it
+             │
+             ▼
+   ┌─────────────────────┐
+   │ onboarding_options()│  ONE call returns everything the
+   └─────────┬───────────┘  three screens need to render
+             │
+   ┌─────────┴───────────────────────────────────────────┐
+   │                  STAGE 1 — three questions          │
+   │                                                     │
+   │  ① Where do you travel?     countries[]             │
+   │     🇯🇵 Japan ✓  🇰🇷 Korea  🇹🇭 Thailand  🇮🇹 Italy    │
+   │     (`available` flags where we actually have data) │
+   │                                                     │
+   │  ② Why do you travel?       reasons[]               │
+   │     🍜 Eating my way around   ⛩ Culture             │
+   │     🥾 Adventure   🌃 Going out   ♨️ Rest and reset  │
+   │                                                     │
+   │  ③ What are you into?       interests[]             │
+   │     🍜 Restaurants  🌃 Bars & clubs  🥾 Hiking       │
+   │     🏖 Beaches  🎨 Art  🎮 Anime  🎧 Music  …        │
+   └─────────┬───────────────────────────────────────────┘
+             ▼
+   ┌──────────────────────────┐
+   │ save_profile_onboarding( │   UPSERT traveler_profiles
+   │   interests, countries,  │   onboarded = true
+   │   reasons )              │
+   └─────────┬────────────────┘
+             ▼
+   ┌───────────────────────────────────────────┐
+   │  INSPIRATION FEED — no trip required      │
+   │                                           │
+   │  feed() scores on interests + reasons +   │
+   │  countries. Nothing is penalised for      │
+   │  being in the "wrong" city or over budget │
+   │  because the traveler hasn't said where   │
+   │  they're going or what they'll spend.     │
+   │                                           │
+   │  swipe right → saved_items (PROFILE-level)│
+   │  swipe left  → dismissed_items            │
+   └─────────┬─────────────────────────────────┘
+             │
+             │   …days, weeks, or months later…
+             ▼
+   ┌─────────────────────────────────────┐
+   │  traveler taps "Create itinerary"   │
+   │  — or taps "Add to itinerary" and   │
+   │    the engine raises `no trip yet`  │
+   └─────────┬───────────────────────────┘
+             ▼
+   ┌─────────────────────┐
+   │ trip_options('JP')  │  cities + neighbourhoods + counts
+   └─────────┬───────────┘
+             │
+   ┌─────────┴───────────────────────────────────────────┐
+   │              STAGE 2 — the deeper questions          │
+   │                                                     │
+   │  Exact city of stay        Osaka                    │
+   │  Neighbourhood staying in  Tenma                    │
+   │  When / how long           14 Sep, 4 nights         │
+   │  Who with                  Group                    │
+   │  Budget                    Shoestring               │
+   │  Pace                      Packed                   │
+   └─────────┬───────────────────────────────────────────┘
+             ▼
+   ┌──────────────────┐
+   │  create_trip(…)  │  INSERT trips (status 'planning')
+   └─────────┬────────┘
+             ▼
+   ┌────────────────────────────────────────────────────┐
+   │  PLANNING FEED — same person, same taste,          │
+   │  trip context now applied                          │
+   │                                                    │
+   │  city match      +2.5   wrong city  −3.5           │
+   │  staying-here    +1.0                              │
+   │  within dates    +2.5   outside     −2.0           │
+   │  budget fit      +1.5   overshoot   scaled penalty │
+   │                                                    │
+   │  "In Tenma, where you are staying"                 │
+   └─────────┬──────────────────────────────────────────┘
+             ▼
+   ┌──────────────────────────────────────────────┐
+   │ trip_suggestions()                           │
+   │ "You saved these in Osaka — add them?"       │
+   │ ← the payoff of profile-level saves          │
+   └─────────┬────────────────────────────────────┘
+             ▼
+        add_to_itinerary() → itinerary_entries (trip-scoped)
+```
+
+### Why it is shaped this way
+
+**Anonymous first.** No email, no password, no verification step. A traveler is
+scrolling in seconds, which matters enormously for a product whose whole premise
+is casual discovery. The session persists in the browser, so a refresh
+re-attaches to the same profile — state lives in Postgres, not `localStorage`.
+
+**The empty taste row is created by the trigger, not by onboarding.** So there
+is no "does the row exist yet" branch anywhere in the client; onboarding is
+always an update.
+
+**Stage 2 is reachable from two directions.** Either the traveler taps "create
+itinerary" deliberately, or they tap "add to itinerary" on a card and
+`add_to_itinerary` raises `no trip yet`. That error is not a failure to hide —
+it is the designed cue to open the trip questions at the exact moment they
+became relevant.
+
+**Onboarding can be skipped.** `feed()` works with an empty taste profile: it
+falls back to locality and social proof, so the app is never a blank screen.
+
+---
+
+## 4. End-to-end dataflow — the demo journey
 
 ```
 TRAVELER                CLIENT                    POSTGRES
@@ -240,7 +414,7 @@ of the explicit conditions in the definition of done.
 
 ---
 
-## 4. How one card gets its score and its explanation
+## 5. How one card gets its score and its explanation
 
 The scoring pass emits the number **and** the sentence together, in the same
 expression. They cannot drift apart, so the "why" a judge reads is literally the
@@ -290,7 +464,7 @@ for every traveler — which is the exact failure the product exists to avoid.
 
 ---
 
-## 5. Sponsor integrations
+## 6. Sponsor integrations
 
 All three run **offline, before the demo**, and write to the database. Nothing
 in the request path can be broken by a third party being slow or down.

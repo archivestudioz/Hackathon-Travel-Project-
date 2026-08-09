@@ -1,20 +1,43 @@
 -- Personalisation engine.
 --
--- Deterministic, not learned. Two reasons that is the right call here and not
--- just the fast one: a judge can be shown exactly why a card surfaced, and the
--- same inputs always produce the same feed, so a demo cannot embarrass you by
--- ranking differently on the third run.
+-- Deterministic, not learned. Two reasons that is right and not merely fast: a
+-- judge can be shown exactly why a card surfaced, and identical inputs always
+-- produce an identical feed, so a demo cannot embarrass you by ranking
+-- differently on the third run.
 --
--- Every scoring component also emits a human sentence, so `reasons` is produced
--- by the same pass that produces `score`. They cannot drift apart — the card's
--- explanation is not a separate guess about why it ranked.
+-- Scoring runs in TWO MODES, matching the two-stage profile:
+--
+--   INSPIRATION  (no trip)  — interests, countries, and reasons only. This is
+--                             the scroll-for-ideas feed someone uses months
+--                             before booking. Nothing is penalised for being in
+--                             the wrong city or over budget, because there is
+--                             no budget and no city yet.
+--
+--   PLANNING     (a trip)   — everything above, plus the trip's city,
+--                             neighbourhood, dates, budget, party, and pace.
+--                             Now a wrong city IS penalised, because the
+--                             traveler has told us where they are going.
+--
+-- Every component emits its human sentence in the same pass that produces its
+-- number, so `reasons` cannot drift from `score`. The explanation on the card
+-- is literally the reason it ranked.
 
 create or replace function current_profile_id()
 returns uuid language sql stable security definer set search_path = public as $$
   select id from profiles where auth_user_id = auth.uid();
 $$;
 
--- What a traveler can comfortably spend on one experience, in yen.
+-- The trip the feed should assume when the client does not name one: whatever
+-- the traveler is actively planning or currently on.
+create or replace function current_trip_id()
+returns uuid language sql stable security definer set search_path = public as $$
+  select id from trips
+   where profile_id = current_profile_id()
+     and status in ('active', 'planning')
+   order by (status = 'active') desc, start_date asc nulls last, created_at desc
+   limit 1;
+$$;
+
 create or replace function budget_ceiling_yen(p_budget budget_level)
 returns integer language sql immutable as $$
   select case p_budget
@@ -25,7 +48,6 @@ returns integer language sql immutable as $$
          end;
 $$;
 
--- Tags that signal an experience suits a given party shape.
 create or replace function style_tag(p_style travel_style)
 returns text language sql immutable as $$
   select case p_style
@@ -38,29 +60,30 @@ $$;
 
 -- ------------------------------------------------------------------ scores --
 
--- Returns a score and its explanation for every published experience.
--- Dismissed experiences are excluded outright rather than down-weighted: a
--- swipe left is an instruction, not a hint.
-create or replace function experience_scores(p_profile uuid)
+create or replace function experience_scores(p_profile uuid, p_trip uuid default null)
 returns table (experience_id uuid, score numeric, reasons text[])
 language sql stable
 as $$
   with me as (
-    select coalesce(tp.interests,     '{}')::text[]   as interests,
-           coalesce(tp.destinations,  '{}')::text[]   as destinations,
-           coalesce(tp.neighborhoods, '{}')::text[]   as neighborhoods,
-           tp.trip_start,
-           tp.trip_end,
-           coalesce(tp.budget, 'moderate')::budget_level as budget,
-           coalesce(tp.style,  'solo')::travel_style     as style,
-           lower(coalesce(pr.about, ''))              as about,
-           coalesce(tp.onboarded, false)              as onboarded
+    select coalesce(tp.interests, '{}')::text[] as interests,
+           coalesce(tp.countries, '{}')::text[] as countries,
+           coalesce(tp.reasons,   '{}')::text[] as reasons,
+           lower(coalesce(pr.about, ''))        as about
       from (select 1) _
-      left join profiles pr             on pr.id = p_profile
-      left join traveler_preferences tp on tp.profile_id = p_profile
+      left join profiles pr          on pr.id = p_profile
+      left join traveler_profiles tp on tp.profile_id = p_profile
   ),
-  -- How the traveler has behaved so far, per category. Saves pull a category
-  -- up; dismissals push the whole category down, not just the card.
+  trip as (
+    select t.id, t.city_id, t.neighborhood_id, t.start_date, t.end_date,
+           t.budget, t.party, t.pace,
+           c.name_en as trip_city, n.name_en as trip_hood
+      from trips t
+      left join cities c        on c.id = t.city_id
+      left join neighborhoods n on n.id = t.neighborhood_id
+     where t.id = p_trip
+  ),
+  -- Behaviour so far, per category. Saves lift a category; dismissals push the
+  -- whole category down, not just the one card.
   affinity as (
     select e.category as cat,
            count(s.profile_id) as saved_n,
@@ -72,49 +95,47 @@ as $$
   ),
   base as (
     select e.*,
-           c.slug  as city_slug,
-           c.name_en as city_name,
-           n.slug  as hood_slug,
-           n.name_en as hood_name,
-           me.*,
+           c.name_en   as city_name,
+           c.country_code,
+           me.interests, me.countries, me.reasons, me.about,
+           t.id        as trip_id,
+           t.trip_city, t.trip_hood,
+           t.budget    as trip_budget,
+           t.party     as trip_party,
            coalesce(a.saved_n, 0)     as cat_saved,
            coalesce(a.dismissed_n, 0) as cat_dismissed,
 
-           -- interest overlap
            (e.category = any (me.interests) or e.tags && me.interests) as hits_interest,
-           -- The specific interest that matched, for the sentence. Checks tags
-           -- as well as category, otherwise a food tour tagged 'traditional'
-           -- tells a culture traveler only "matches your interests", which is
-           -- the vaguest possible version of the truth.
-           (select i.label_en
-              from interests i
+           -- Checks tags as well as category: a food tour tagged 'traditional'
+           -- should tell a culture traveler why, not just "matches interests".
+           (select i.label_en from interests i
              where i.slug = any (me.interests)
                and (i.slug = e.category or i.slug = any (e.tags))
-             order by (i.slug = e.category) desc
-             limit 1)                                                  as matched_interest,
+             order by (i.slug = e.category) desc limit 1)               as matched_interest,
 
-           (me.destinations <> '{}')                                   as has_destinations,
-           (c.slug = any (me.destinations))                            as hits_city,
-           (n.slug is not null and n.slug = any (me.neighborhoods))     as hits_hood,
+           -- Reason for travel is a softer signal than interest, and separate:
+           -- two people who both pick "food" want different trips depending on
+           -- whether they travel for a big night out or a slow reset.
+           (e.tags && me.reasons or e.category = any (me.reasons))      as hits_reason,
+           (me.countries <> '{}' and c.country_code = any (me.countries)) as hits_country,
 
-           -- Date compatibility. An always-on attraction (no start time) is
-           -- never "wrong" for a trip window, it just earns less than a thing
-           -- happening while you are actually there.
+           (t.id is not null)                                           as planning,
+           (t.city_id is not null and e.city_id = t.city_id)            as hits_city,
+           (t.neighborhood_id is not null
+             and e.neighborhood_id = t.neighborhood_id)                 as hits_hood,
+
            (e.starts_at is null)                                        as always_on,
-           (e.starts_at is not null
-             and me.trip_start is not null
-             and e.starts_at::date between me.trip_start and coalesce(me.trip_end, me.trip_start))
-                                                                        as in_trip_window,
-           (e.starts_at is not null
-             and me.trip_start is not null
-             and e.starts_at::date not between me.trip_start and coalesce(me.trip_end, me.trip_start))
-                                                                        as outside_trip,
+           (e.starts_at is not null and t.start_date is not null
+             and e.starts_at::date
+                 between t.start_date and coalesce(t.end_date, t.start_date)) as in_trip_window,
+           (e.starts_at is not null and t.start_date is not null
+             and e.starts_at::date
+                 not between t.start_date and coalesce(t.end_date, t.start_date)) as outside_trip,
 
-           (e.is_free or e.price_yen <= budget_ceiling_yen(me.budget))  as fits_budget,
-           (style_tag(me.style) = any (e.tags))                         as fits_style,
+           (t.budget is null or e.is_free
+             or e.price_yen <= budget_ceiling_yen(t.budget))            as fits_budget,
+           (t.party is not null and style_tag(t.party) = any (e.tags))  as fits_style,
 
-           -- Free-text from the profile screen, matched against tags. Cheap,
-           -- and it makes the box do something real instead of decorating.
            (me.about <> '' and exists (
               select 1 from unnest(e.tags || array[e.category]) tg
                where me.about like '%' || lower(tg) || '%'))            as hits_about,
@@ -122,69 +143,73 @@ as $$
            (e.starts_at is not null
              and e.starts_at between now() and now() + interval '7 days') as soon
       from experiences e
-      join cities c            on c.id = e.city_id
-      left join neighborhoods n on n.id = e.neighborhood_id
+      join cities c on c.id = e.city_id
      cross join me
-      left join affinity a      on a.cat = e.category
+      left join trip t on true
+      left join affinity a on a.cat = e.category
      where e.published
-       and not exists (
-             select 1 from dismissed_items d
-              where d.experience_id = e.id and d.profile_id = p_profile)
+       and not exists (select 1 from dismissed_items d
+                        where d.experience_id = e.id and d.profile_id = p_profile)
   )
   select
     b.id,
     round((
-        case when b.hits_interest  then 3.0 else 0 end
-      -- Someone who told us they are going to Kyoto should not be shown Tokyo
-      -- at the top of their feed, however well it matches on taste. Naming a
-      -- destination is close to a filter, so a wrong city is penalised, not
-      -- merely unrewarded.
-      + case when not b.has_destinations then 0
-             when b.hits_city            then 2.5
+        case when b.hits_interest then 3.0 else 0 end
+      + case when b.hits_reason   then 1.2 else 0 end
+      + case when b.hits_country  then 0.8 else 0 end
+
+      -- City only matters once a trip exists. Before that the traveler has not
+      -- told us where they are going, so penalising Tokyo would be inventing an
+      -- opinion they never expressed.
+      + case when not b.planning        then 0
+             when b.city_id is not null and b.hits_city then 2.5
+             when b.trip_city is null   then 0
              else                            -3.5 end
-      + case when b.hits_hood      then 1.0 else 0 end
+      + case when b.hits_hood then 1.0 else 0 end
+
       + case when b.in_trip_window then 2.5
              when b.always_on      then 0.8
              when b.outside_trip   then -2.0
              else 0 end
-      -- Overshooting the budget scales with how badly. A flat penalty let a
-      -- 14,000 yen kaiseki outrank free things for a shoestring traveler.
-      + case when b.fits_budget then 1.5
+
+      -- Overshoot scales with how bad it is. A flat penalty let a 14,000 yen
+      -- kaiseki outrank free things for a shoestring traveler.
+      + case when not b.planning  then 0
+             when b.fits_budget   then 1.5
              else -1.0 - least(3.5,
-                    b.price_yen::numeric / greatest(1, budget_ceiling_yen(b.budget)) - 1)
-        end
-      + case when b.fits_style     then 1.0 else 0 end
+                    b.price_yen::numeric
+                    / greatest(1, budget_ceiling_yen(b.trip_budget)) - 1) end
+
+      + case when b.fits_style then 1.0 else 0 end
       + least(1.5, b.cat_saved * 0.5)
       - least(2.0, b.cat_dismissed * 0.75)
       + b.locality * 1.2
       + case when b.hits_about then 1.5 else 0 end
       + case when b.soon       then 0.8 else 0 end
-      -- Social proof, dampened. Popularity should nudge ordering, never
-      -- dominate it, or the feed collapses to the same few cards for everyone.
+      -- Popularity nudges ordering; it must never dominate it, or the feed
+      -- collapses to the same handful of cards for every traveler.
       + least(1.0, ln(b.save_count + 1) * 0.25)
     )::numeric, 3) as score,
 
-    -- Ordered most-persuasive first; the UI can show just reasons[1].
     array_remove(array[
       case when b.matched_interest is not null
              then 'Because you like ' || lower(b.matched_interest) end,
       case when b.hits_interest and b.matched_interest is null
              then 'Matches your interests' end,
-      case when b.hits_hood      then 'In ' || b.hood_name || ', where you are staying' end,
+      case when b.hits_hood then 'In ' || b.trip_hood || ', where you are staying' end,
       case when b.in_trip_window and b.hits_city
-             then 'Happening during your ' || b.city_name || ' dates' end,
+             then 'Happening during your ' || b.trip_city || ' dates' end,
       case when b.in_trip_window and not b.hits_city
-             then 'Happening while you are in Japan' end,
+             then 'Happening while you are there' end,
       case when b.hits_city and not b.hits_hood and not b.in_trip_window
              then 'In ' || b.city_name end,
-      case when b.is_free and not b.fits_budget then null
-           when b.fits_budget and b.price_yen > 0 and b.has_destinations
-             then 'Within your budget' end,
+      case when b.hits_reason and not b.hits_interest
+             then 'Fits why you travel' end,
       case when b.hits_about     then 'Matches what you wrote on your profile' end,
       case when b.soon           then 'Happening this week' end,
       case when b.locality >= 0.7 then 'Locally hosted, not on the tourist trail' end,
       case when b.is_free        then 'Free' end,
-      case when b.fits_style     then 'Good for ' || b.style::text || ' travel' end,
+      case when b.fits_style     then 'Good for ' || b.trip_party::text || ' travel' end,
       case when b.cat_saved > 0  then 'You have saved ' || b.category || ' before' end
     ], null) as reasons
   from base b;
@@ -192,33 +217,33 @@ $$;
 
 -- ------------------------------------------------------------- card shape --
 
--- Every surface that shows an experience — feed, explore, sections, saved,
--- itinerary — renders the same card. Defining that shape once means the UI
--- team writes one component and one TypeScript type, and a field added here
--- appears everywhere at once instead of in four hand-synced queries.
+-- Every surface that shows an experience renders the same card. Defining that
+-- once means the UI team writes one component and one TypeScript type, and a
+-- field added here appears everywhere instead of in four hand-synced queries.
 create view experience_cards
 with (security_invoker = true)
 as
-select e.id                            as experience_id,
+select e.id                         as experience_id,
        e.name, e.short_description, e.category, e.tags,
-       c.name_en                       as city,
-       c.slug                          as city_slug,
-       n.name_en                       as neighborhood,
-       n.slug                          as neighborhood_slug,
+       c.country_code,
+       c.name_en                    as city,
+       c.slug                       as city_slug,
+       n.name_en                    as neighborhood,
+       n.slug                       as neighborhood_slug,
        e.venue_name, e.address,
        e.starts_at, e.ends_at, e.duration_min, e.recurrence_note,
        e.is_free, e.price_yen, e.price_note,
        e.lat, e.lng,
        e.booking_url, e.external_url, e.stay22_url,
-       h.name                          as host_name,
-       coalesce(h.verified,  false)    as host_verified,
-       coalesce(h.is_local,  true)     as host_is_local,
-       m.kind                          as media_kind,
-       m.source_url                    as media_source_url,
-       m.thumbnail_url                 as media_thumbnail_url,
-       m.attribution_name              as media_attribution_name,
-       m.attribution_url               as media_attribution_url,
-       m.license                       as media_license,
+       h.name                       as host_name,
+       coalesce(h.verified, false)  as host_verified,
+       coalesce(h.is_local, true)   as host_is_local,
+       m.kind                       as media_kind,
+       m.source_url                 as media_source_url,
+       m.thumbnail_url              as media_thumbnail_url,
+       m.attribution_name           as media_attribution_name,
+       m.attribution_url            as media_attribution_url,
+       m.license                    as media_license,
        e.save_count, e.share_count, e.locality,
        e.published, e.city_id, e.neighborhood_id
   from experiences e
@@ -229,10 +254,14 @@ select e.id                            as experience_id,
 
 -- --------------------------------------------------------------- the feed --
 
--- One row per card in the swipe feed, already carrying its media, its social
--- proof, whether you have already saved it, and why it surfaced. Rendering a
--- card must never require a second round trip.
-create or replace function feed(p_limit integer default 20, p_offset integer default 0)
+-- The swipe deck. Pass p_trip_id to plan for a specific journey; omit it and
+-- the engine uses whichever trip the traveler is actively planning, falling
+-- back to pure inspiration mode when they have none.
+create or replace function feed(
+  p_trip_id uuid default null,
+  p_limit   integer default 20,
+  p_offset  integer default 0
+)
 returns table (
   experience_id uuid, name text, short_description text, category text, tags text[],
   city text, neighborhood text, venue_name text,
@@ -248,7 +277,10 @@ returns table (
 )
 language sql stable
 as $$
-  with me as (select current_profile_id() as pid)
+  with me as (
+    select current_profile_id() as pid,
+           coalesce(p_trip_id, current_trip_id()) as tid
+  )
   select k.experience_id, k.name, k.short_description, k.category, k.tags,
          k.city, k.neighborhood, k.venue_name,
          k.starts_at, k.duration_min, k.recurrence_note,
@@ -258,14 +290,16 @@ as $$
          k.media_kind, k.media_source_url, k.media_thumbnail_url,
          k.media_attribution_name, k.media_attribution_url, k.media_license,
          k.save_count, k.share_count,
-         (s.profile_id is not null), (i.id is not null),
+         false, (i.id is not null),
          sc.score, sc.reasons
     from me
-    join experience_scores((select pid from me)) sc on true
+    join experience_scores((select pid from me), (select tid from me)) sc on true
     join experience_cards k on k.experience_id = sc.experience_id
-    left join saved_items s       on s.experience_id = k.experience_id and s.profile_id = (select pid from me)
-    left join itinerary_entries i on i.experience_id = k.experience_id and i.profile_id = (select pid from me)
-   -- Already-saved cards drop out of the swipe deck; you have decided on them.
+    left join saved_items s on s.experience_id = k.experience_id
+                           and s.profile_id = (select pid from me)
+    left join itinerary_entries i on i.experience_id = k.experience_id
+                                 and i.trip_id = (select tid from me)
+   -- Already-saved cards leave the swipe deck; the traveler has decided.
    where s.profile_id is null
    order by sc.score desc, k.save_count desc, k.experience_id
    limit p_limit offset p_offset;
