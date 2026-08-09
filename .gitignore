@@ -14,3 +14,14 @@ __pycache__/
 venv/
 node_modules/
 .DS_Store
+
+# Downloaded source video. Never committed, never deployed, never rehosted —
+# only the post URLs are used, via official oEmbed. See scripts/attach_media.py
+*.mp4
+*.mov
+*.webm
+*.mkv
+clips/
+videos/
+downloads/
+media.csv
