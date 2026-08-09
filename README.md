@@ -1,54 +1,18 @@
-# Meguri — Japan travel discovery
+# Japan travel discovery — the engine
 
-A mobile-first discovery app for locally hosted events, festivals and experiences
-across **Tokyo, Kyoto and Osaka**, and for turning what you find into a
-day-by-day itinerary.
+The backend for a discovery app that turns firsthand video of a place into a
+day-by-day trip. **This repository is the engine only.** The frontend lives in
+its own repo and talks to this over PostgREST.
 
-Travellers increasingly find what to do through short-form video, but turning
-that inspiration into an actual plan is fragmented. Meguri connects visual
-discovery directly to event details, saving, and scheduling.
+Live: **3 cities · 36 experiences · 36 media rows**, Tokyo, Kyoto and Osaka.
 
----
-
-## Two halves, one repo
-
-| | Where | Runs on | Status |
-|---|---|---|---|
-| **App** — swipe deck, detail sheets, scheduling, itinerary chat | `src/`, `preview/` | Local mock data + `localStorage`. No keys, no database. | Demo-ready standalone |
-| **Engine** — schema, scoring, planner, RLS | `supabase/`, `scripts/`, `docs/` | Postgres 16 + PostGIS via Supabase | Verified against a real instance |
-
-**They are not wired together yet, and that is deliberate.** The app ships its
-own `src/lib/scoring.ts`, `src/lib/itinerary.ts` and `src/lib/data/experiences.ts`
-so it demos with nothing running — which is the right call for a judging table
-with unreliable wifi. The engine implements the same concepts in Postgres, at
-real data volume, with authorization in the database.
-
-`src/lib/storage.ts` is the seam between them. It defines a `Repository`
-interface the whole app talks through; connecting to the engine means writing a
-second implementation of that interface and changing one line in `AppStore`.
-[`docs/backend-features.md`](docs/backend-features.md) has the full migration
-path, and [`docs/roam-client.ts`](docs/roam-client.ts) is the client that would
-back it.
-
-### Run the app
-
-```bash
-npm install
-npm run dev        # http://localhost:3000
-```
-
-No API keys, no database, no external services. Full walkthrough, design
-system, and demo script in **[`docs/frontend.md`](docs/frontend.md)**.
-
-### Run the engine
-
-```bash
-cp .env.example .env
-```
-
-Then paste [`supabase/ALL.sql`](supabase/ALL.sql) into the Supabase dashboard
-SQL editor and enable **Authentication → Providers → Anonymous**. One paste,
-every migration and both seeds. Details below.
+- **[`MIGRATE.md`](MIGRATE.md)** — dropping this into a frontend repo, four lines
+- **[`supabase/README.md`](supabase/README.md)** — standing the database up, six pastes
+- **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, rendering rules
+- **[`docs/roam-client.ts`](docs/roam-client.ts)** — drop-in typed client. Copy this one file and the integration is done.
+- **[`docs/fixtures.ts`](docs/fixtures.ts)** — real recorded payloads, so screens can be built before the backend exists
+- **[`docs/backend-features.md`](docs/backend-features.md)** — full feature inventory
+- **[`docs/architecture.md`](docs/architecture.md)** — system diagram, ER model, scoring breakdown
 
 ---
 
