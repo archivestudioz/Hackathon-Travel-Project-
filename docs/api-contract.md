@@ -184,6 +184,27 @@ anything tagged `alcohol` out of the feed entirely. Not ranked lower; absent.
 `undisclosed` is treated as an adult, so declining to answer never silently
 degrades the product.
 
+### Guest mode — skip even the taps
+
+Every account is already anonymous, so there is no signup to skip. Guest mode
+skips the *three taps*.
+
+| Function | Args | Returns |
+|---|---|---|
+| `continue_as_guest()` | — | `{ guest: true, onboarded: true }` |
+| `claim_guest_profile(p_display_name?)` | text | the profile row — call when a guest first saves or names themselves |
+
+The feed handles zero signal by **exploring**. `exploration_weight()` runs 1.0 →
+0.0 as confidence rises, and while it is high the deck round-robins across
+categories rather than ordering purely by score. A cold feed sorted by score
+alone returns five variations on one category, which is both boring and the
+slowest possible way to learn anything — interleaving reads as variety *and*
+makes every swipe discriminate between categories instead of within one.
+
+Verified: a guest's first eight cards covered eight distinct categories; after
+eight swipes exploration had decayed and the deck had converged on the two
+categories they actually picked.
+
 ### Optional: declared interests
 
 `save_profile_onboarding(p_interests[], p_countries[], p_reasons[])` still
