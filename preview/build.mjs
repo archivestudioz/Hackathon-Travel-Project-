@@ -49,15 +49,26 @@ const js = result.outputFiles[0].text;
 /* 2. Reuse the compiled CSS, inlining the fonts                        */
 /* ------------------------------------------------------------------ */
 
-const cssDir = path.join(ROOT, ".next", "static", "css", "app");
-const cssFiles = await readdir(cssDir).catch(() => []);
+/* Next has moved this directory between releases, so walk the whole tree. */
+async function findCss(dir) {
+  const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+  const found = [];
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) found.push(...(await findCss(full)));
+    else if (entry.name.endsWith(".css")) found.push(full);
+  }
+  return found;
+}
+
+const cssFiles = await findCss(path.join(ROOT, ".next", "static", "css"));
 if (cssFiles.length === 0) {
   throw new Error("No compiled CSS found — run `npm run build` first.");
 }
 
 let css = "";
-for (const file of cssFiles.filter((f) => f.endsWith(".css"))) {
-  css += await readFile(path.join(cssDir, file), "utf8");
+for (const file of cssFiles.sort()) {
+  css += await readFile(file, "utf8");
 }
 
 /* Swap every /_next/static/media/*.woff2 reference for a data URI. */
