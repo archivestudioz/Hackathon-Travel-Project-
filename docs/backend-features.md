@@ -1,11 +1,14 @@
 # What the backend does
 
-Complete inventory. 15 tables, 30 public functions, 10 migrations, all verified
-against a real Postgres 16 + PostGIS instance.
+Complete inventory. 16 tables, 36 client-facing functions, 11 migrations, all
+verified against a real Postgres 16 + PostGIS instance.
 
 There is **no application server**. The browser calls Postgres functions through
 PostgREST and Row Level Security decides what comes back, so authorization is
-enforced in the database rather than in code someone can forget to write.
+enforced in the database rather than in code someone can forget to write. The
+one exception is the AI chat sheet (§13), which needs a route handler purely to
+keep an Anthropic key out of the browser — it holds that one secret and makes
+no authorization decision of its own.
 
 ---
 
@@ -186,7 +189,39 @@ day strip), `itinerary_conflicts()`, and `travel_estimate()` which produces the
   a date the traveler isn't there
 - Raises `no trip yet` when there's no trip — the cue to open trip creation
 
-## 13. Media
+## 13. The AI chat sheet — "Make Day 2 lighter"
+
+`docs/itinerary-agent.ts` · `docs/itinerary-chat-route.ts` · `askAboutItinerary()`
+
+Claude **Sonnet 5** sitting on top of the itinerary, driven by eight tools that
+are all RPCs from the sections above — `get_plan`, `search_experiences`,
+`list_saved`, `add_stop`, `move_stop`, `remove_stop`, `rebuild_plan`,
+`check_conflicts`. No database connection, no SQL. Anything the sheet can do, a
+thumb could already have done on the same screen.
+
+- Returns `{ reply, actions, plan }` — the plan **after** the edits, so the
+  timeline re-renders with no refetch, and `actions` says which row to animate
+- The system prompt carries the day strip inline, so "Day 2" means the day
+  numbered 2 on the traveler's screen — including the empty ones, which are
+  usually the right answer to "add something"
+- Display names are resolved to slugs before searching, because `explore()`
+  filters on `city_slug` and a name that doesn't match returns zero rows with
+  no error — the worst failure mode, since the model would then confidently say
+  there's nothing free in Kyoto
+- Fixture mode returns a canned reply over the recorded plan, so the sheet gets
+  built before anyone has an API key
+
+**The only server tier in the product**, and it exists for exactly one reason:
+an Anthropic key can't ship to the browser the way the Supabase anon key can.
+The route holds that one secret and nothing else — it forwards the traveler's
+own access token, so RLS answers the authorization question, same as every
+other call. The trip id is pinned server-side and never comes from the model.
+
+Model notes: `claude-sonnet-5`, adaptive thinking by default, **`budget_tokens`
+/ `temperature` / `top_p` / `top_k` all return 400** — `output_config.effort` is
+the only dial.
+
+## 14. Media
 
 `experience_media` stores **pointers and attribution only**. No video is ever
 copied; the schema has no column for one.
@@ -197,7 +232,7 @@ copied; the schema has no column for one.
 - `media_credit` is formatted server-side so every surface credits identically
 - Everything ships as `placeholder`, so the app looks finished with zero keys
 
-## 14. Content pipeline (offline, never during a demo)
+## 15. Content pipeline (offline, never during a demo)
 
 | Script | Does |
 |---|---|
@@ -209,7 +244,7 @@ copied; the schema has no column for one.
 Everything third-party runs **before** a demo and writes to the database, so
 nothing in the request path can be broken by Overpass being slow.
 
-## 15. Security
+## 16. Security
 
 RLS on all 15 tables:
 
@@ -222,7 +257,7 @@ RLS on all 15 tables:
 *Verified: traveler B sees **0** of traveler A's saves, trips and itinerary,
 while both see all 26 catalogue rows, and signed-out browsing still works.*
 
-## 16. Seeded content
+## 17. Seeded content
 
 26 experiences · 11 categories · 19 neighbourhoods · 25 hosts · 14 interests ·
 10 countries · 3 cities (Tokyo, Kyoto, Osaka)

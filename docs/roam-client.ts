@@ -510,6 +510,124 @@ export const getDismissed = () => call<any[]>('my_dismissed')
 /** Clears one traveler back to a fresh state. The catalogue is untouched. */
 export const resetDemo = () => call<{ reset: boolean; next_screen: string }>('reset_demo')
 
+/* ── the AI chat sheet ────────────────────────────────────────────────── */
+
+export interface ChatTurn {
+  role: 'user' | 'assistant'
+  content: string
+}
+
+/** What the assistant actually did. Animate from this instead of diffing. */
+export type ItineraryAction =
+  | { kind: 'added'; experience_id: string; name: string; day: string; planned_start: string | null }
+  | { kind: 'moved'; entry_id: string; name: string; day: string; planned_start: string | null }
+  | { kind: 'removed'; experience_id: string; name: string }
+  | { kind: 'rebuilt'; scheduled: number; days_used: number; unplaced: number }
+
+export interface ChatResult {
+  reply: string
+  actions: ItineraryAction[]
+  /** The plan AFTER the edits, every day including empty ones. Re-render from this. */
+  plan: {
+    trip: any
+    days: Array<{
+      day_number: number
+      date: string
+      weekday: string
+      city: string | null
+      stop_count: number
+      total_price_yen: number
+      stops: Array<{
+        entry_id: string
+        experience_id: string
+        name: string
+        category: string
+        neighborhood: string | null
+        planned_start: string | null
+        duration_min: number | null
+        price_yen: number
+        is_free: boolean
+      }>
+    }>
+    conflicts: any[]
+  }
+  truncated: boolean
+}
+
+/**
+ * "Make Day 2 lighter." · "Move the ramen tour later." · "Add something free on Thursday."
+ *
+ * The ONE call in this file that does not go straight to Postgres. Claude runs
+ * server-side because the Anthropic key cannot ship to a browser, so this posts
+ * to a route handler you copy from `docs/itinerary-chat-route.ts`. The route
+ * forwards your Supabase token and Claude edits the plan through the same RPCs
+ * the buttons on this screen already call — RLS is unchanged, and there is
+ * nothing the sheet can do that a thumb could not.
+ *
+ * Send the whole conversation each time; the sheet is stateless on the server.
+ * Re-render from `result.plan` rather than calling `getItinerary()` again.
+ */
+export async function askAboutItinerary(
+  tripId: string,
+  messages: ChatTurn[],
+  signal?: AbortSignal,
+): Promise<ChatResult> {
+  if (USE_FIXTURES) {
+    // A canned reply over the real recorded plan, so the sheet can be designed
+    // and reviewed with no Anthropic key and no route handler deployed. Fixture
+    // days are only the days that HAVE stops, so `day_number` here is not the
+    // traveler's day numbering the way it is in production — the shape is
+    // faithful, the numbering is not.
+    const { ITINERARY } = await import('./fixtures')
+    const days = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
+    return {
+      reply: 'Dropped the arcade from Wednesday and moved the izakaya to 21:00. It is still saved.',
+      actions: [],
+      plan: {
+        trip: ITINERARY.trip,
+        days: ITINERARY.days.map((d, i) => ({
+          day_number: i + 1,
+          date: d.day,
+          weekday: days[new Date(`${d.day}T00:00:00Z`).getUTCDay()]!,
+          city: d.stops[0]?.city ?? null,
+          stop_count: d.stop_count,
+          total_price_yen: d.total_price_yen,
+          stops: d.stops.map((s) => ({
+            entry_id: s.entry_id,
+            experience_id: s.experience_id,
+            name: s.name,
+            category: s.category,
+            neighborhood: s.neighborhood,
+            planned_start: s.planned_start,
+            duration_min: s.duration_min,
+            price_yen: s.price_yen,
+            is_free: s.is_free,
+          })),
+        })),
+        conflicts: [],
+      },
+      truncated: false,
+    }
+  }
+
+  const { data: { session } } = await supabase.auth.getSession()
+  if (!session) throw new Error('askAboutItinerary: not signed in')
+
+  const res = await fetch('/api/itinerary/chat', {
+    method: 'POST',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${session.access_token}`,
+    },
+    body: JSON.stringify({ tripId, messages }),
+    signal,
+  })
+
+  const json = await res.json()
+  if (!res.ok) throw new Error(json?.error ?? `chat failed (${res.status})`)
+  return json as ChatResult
+}
+
 /* ── media ────────────────────────────────────────────────────────────── */
 
 /**

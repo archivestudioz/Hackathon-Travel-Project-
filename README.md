@@ -23,10 +23,11 @@ this product would use in production anyway.
 - **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, media rendering rules
 - **[`docs/roam-client.ts`](docs/roam-client.ts)** — drop-in typed client. Copy this one file into the Next.js app and the integration is done.
 - **[`docs/fixtures.ts`](docs/fixtures.ts)** — real recorded payloads, so screens can be built before the backend exists.
+- **[`docs/itinerary-agent.ts`](docs/itinerary-agent.ts)** + **[`docs/itinerary-chat-route.ts`](docs/itinerary-chat-route.ts)** — the AI chat sheet. **Server only.**
 
 ## Integrating the UI
 
-The engine is 30 RPC functions and one card shape. There is no REST layer to
+The engine is 36 RPC functions and one card shape. There is no REST layer to
 learn and no ORM to configure.
 
 ```bash
@@ -67,7 +68,14 @@ supabase/migrations/0001_schema.sql     tables, generated lat/lng, triggers
 supabase/migrations/0002_scoring.sql    experience_cards view, scoring, feed()
 supabase/migrations/0003_actions.sql    every button in the product
 supabase/migrations/0004_rls.sql        authorization, in the database
-supabase/seed.sql                       10 countries, 3 cities, 19 neighborhoods, 20 experiences
+supabase/migrations/0005_age_band.sql   age bands; under-18 hard filter
+supabase/migrations/0006_ingestion.sql  city bboxes, locality scoring
+supabase/migrations/0007_cold_start.sql the three-tap picker, learned affinity
+supabase/migrations/0008_guest_*.sql    guest mode, exploration vs exploitation
+supabase/migrations/0009_accounts.sql   auth triggers, session_state()
+supabase/migrations/0010_attribution.sql creator credit, enforced by constraint
+supabase/migrations/0011_multicity_*.sql trip legs, build_itinerary()
+supabase/seed.sql                       10 countries, 3 cities, 19 neighborhoods, 26 experiences
 ```
 
 ## Setup
@@ -141,6 +149,28 @@ proof. Full weighting table in [`docs/architecture.md`](docs/architecture.md).
 locally-hosted, lesser-known things and drives the *Hidden local gems* rail.
 Well-known attractions are seeded deliberately — without them the score has
 nothing to rank against.
+
+## The chat sheet — the one place with a server
+
+> *"Make Day 2 lighter." · "Move the ramen tour later." · "Add something free on Thursday."*
+
+Claude **Sonnet 5** sits on top of the itinerary with eight tools, and every one
+of them is an RPC the screen's own buttons already call. It has no database
+connection and writes no SQL — anything the sheet can do, a thumb could have
+done. It returns the plan *after* the edits, so the timeline re-renders without
+a refetch.
+
+This is the only surface in the product with a server tier, and it exists for
+exactly one reason: an Anthropic key cannot ship to a browser the way the
+Supabase anon key can. The route holds that one secret and makes no
+authorization decision — it forwards the traveler's own access token and lets
+RLS answer, same as every other call. The trip id is pinned server-side and
+never comes from the model.
+
+```bash
+npm i @anthropic-ai/sdk zod
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env.local   # NOT NEXT_PUBLIC_
+```
 
 ## Media, and the one hard rule
 
