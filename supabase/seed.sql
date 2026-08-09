@@ -147,7 +147,13 @@ insert into experiences (
 select
   v.id::uuid, c.id, n.id, v.host::uuid, v.name, v.name_ja, v.short_desc, v.long_desc,
   v.category, v.tags::text[],
-  case when v.offset_h is null then null else now() + v.offset_h end,
+  -- Date floats so the demo never goes stale, but the CLOCK time has to be
+  -- real: now() + interval leaves a bar crawl starting at 02:32 because the
+  -- time-of-day was whatever moment the seed happened to run. Truncate to the
+  -- day and let preferred_slot() place it at the hour it would actually happen.
+  case when v.offset_h is null then null
+       else date_trunc('day', now() + v.offset_h)
+            + preferred_slot(v.category, v.tags::text[]) end,
   v.duration, v.recurrence,
   v.is_free, v.price, v.price_note, v.venue, v.address,
   st_makepoint(v.lng, v.lat)::geography,
@@ -198,7 +204,7 @@ from (values
    'Meguro River Sakura Night Walk','目黒川 夜桜',
    'Eight hundred cherry trees over a canal, lit by volunteers.',
    'For two weeks a year the Meguro river becomes the best walk in Tokyo. The lanterns are hung by a neighbourhood volunteer association, not the city. Come on a weekday — the weekend is genuinely impassable. Free, and the riverside stands sell sparkling wine in plastic cups.',
-   'nature','{nature,festival,romantic,free}', interval '5 days', 90, 'Late March to early April',
+   'nature','{nature,festival,romantic,late-night,free}', interval '5 days', 90, 'Late March to early April',
    true, 0, null, 'Nakameguro Riverside','Nakameguro, Meguro City, Tokyo',
    139.6990, 35.6440, null, null, 0.62, 341, 86),
 
@@ -341,7 +347,13 @@ insert into experiences (
 select
   v.id::uuid, c.id, n.id, v.host::uuid, v.name, v.name_ja, v.short_desc, v.long_desc,
   v.category, v.tags::text[],
-  case when v.offset_h is null then null else now() + v.offset_h end,
+  -- Date floats so the demo never goes stale, but the CLOCK time has to be
+  -- real: now() + interval leaves a bar crawl starting at 02:32 because the
+  -- time-of-day was whatever moment the seed happened to run. Truncate to the
+  -- day and let preferred_slot() place it at the hour it would actually happen.
+  case when v.offset_h is null then null
+       else date_trunc('day', now() + v.offset_h)
+            + preferred_slot(v.category, v.tags::text[]) end,
   v.duration, v.recurrence,
   v.is_free, v.price, v.price_note, v.venue, v.address,
   st_makepoint(v.lng, v.lat)::geography,

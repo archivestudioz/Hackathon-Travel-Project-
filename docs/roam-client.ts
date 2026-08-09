@@ -398,6 +398,30 @@ export const updateTrip = (
     p_status: patch.status ?? null,
   })
 
+/** Multi-city: ['tokyo','kyoto','osaka'] in travel order. */
+export const createMultiCityTrip = (t: {
+  citySlugs: string[]
+  startDate?: string
+  durationDays?: number
+  endDate?: string
+  neighborhoodSlug?: string
+  party?: TravelStyle
+  budget?: BudgetLevel
+  pace?: TripPace
+  name?: string
+}) =>
+  call<any>('create_trip_multi', {
+    p_city_slugs: t.citySlugs,
+    p_start_date: t.startDate ?? null,
+    p_duration_days: t.durationDays ?? null,
+    p_end_date: t.endDate ?? null,
+    p_neighborhood_slug: t.neighborhoodSlug ?? null,
+    p_party: t.party ?? 'solo',
+    p_budget: t.budget ?? 'moderate',
+    p_pace: t.pace ?? 'balanced',
+    p_name: t.name ?? null,
+  })
+
 export const getTrips = () => call<Trip[]>('my_trips')
 export const deleteTrip = (tripId: string) => call<any>('delete_trip', { p_trip_id: tripId })
 
@@ -441,9 +465,50 @@ export const updateItineraryEntry = (
     p_note: patch.note ?? null,
   })
 
-/** Days in order, stops in order. Render as a timeline; no regrouping needed. */
+/** Days in order, stops in order, each stop carrying travel_from_previous. */
 export const getItinerary = (tripId?: string) =>
-  call<{ trip: any; days: ItineraryDay[] }>('my_itinerary', { p_trip_id: tripId ?? null })
+  call<{ trip: any; days: ItineraryDay[]; conflicts: any[] }>(
+    'my_itinerary', { p_trip_id: tripId ?? null })
+
+/**
+ * "Turn 12 saves into a day-by-day plan."
+ *
+ * Pins anything with a real start time to its own date, then fills the rest by
+ * neighbourhood cluster so a day is walkable rather than four train rides.
+ * Spreads across the days a city actually has instead of front-loading, places
+ * each stop at the hour it would really happen, and never double-books.
+ * Deterministic — the same saves always produce the same plan.
+ */
+export const buildItinerary = (tripId?: string, replace = true) =>
+  call<{
+    trip_id: string
+    scheduled: number
+    days_used: number
+    unplaced: number
+    neighborhoods: string[]
+    conflicts: number
+    summary: string
+  }>('build_itinerary', { p_trip_id: tripId ?? null, p_replace: replace })
+
+/** Every day of the trip INCLUDING empty ones — the day strip needs those. */
+export const getTripDays = (tripId?: string) =>
+  call<Array<{
+    day: string
+    city: string | null
+    stop_count: number
+    total_price_yen: number
+    neighborhoods: string[]
+    is_today: boolean
+  }>>('trip_days', { p_trip_id: tripId ?? null })
+
+export const getConflicts = (tripId?: string) =>
+  call<any[]>('itinerary_conflicts', { p_trip_id: tripId ?? null })
+
+/** Profile → "Passed experiences", with Restore via undoDismiss(). */
+export const getDismissed = () => call<any[]>('my_dismissed')
+
+/** Clears one traveler back to a fresh state. The catalogue is untouched. */
+export const resetDemo = () => call<{ reset: boolean; next_screen: string }>('reset_demo')
 
 /* ── media ────────────────────────────────────────────────────────────── */
 

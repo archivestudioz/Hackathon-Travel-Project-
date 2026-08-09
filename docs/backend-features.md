@@ -137,7 +137,44 @@ All idempotent — a double-tap never errors. Behaviours the UI gets free:
 - Accepts **duration or end date** — people think in "four nights", not "which day I fly home"
 - `trip_suggestions()` surfaces things already saved in that city and not yet scheduled
 
-## 10. Itinerary
+## 10. Multi-city trips
+
+A Japan trip is Tokyo then Kyoto then Osaka. `trip_cities` holds the legs in
+order, with optional arrival and departure dates; when those are absent the trip
+is **split evenly across the legs**, which is what a traveler who has not booked
+trains yet expects. `create_trip_multi(['tokyo','kyoto','osaka'], …)`.
+
+Scoring tests city *membership*, not equality — before this, a Kyoto card scored
+−3.5 on a trip that literally included Kyoto.
+
+## 11. The planner — "Build my itinerary"
+
+`build_itinerary(trip_id)` turns saves into a day-by-day plan. It does the three
+things a person would:
+
+1. **Pins fixed-time events to their own date.** A festival on the 24th cannot
+   be moved to balance a day out.
+2. **Clusters each day by neighbourhood.** Each day gets an anchor — the best
+   unscheduled thing in that day's city — then fills outward from the same
+   neighbourhood, so a day is walkable rather than four train rides.
+3. **Places each stop at the hour it would actually happen.** Markets at 10:00,
+   food at 12:30, izakaya at 21:00, a Daikoku car meet at 21:30.
+
+It **spreads rather than front-loads**: what remains for a city is divided by
+the days that city still has, so two Kyoto saves become one on each of two days
+instead of both on the first with an empty day after.
+
+Returns `{ scheduled, days_used, unplaced, neighborhoods[], conflicts, summary }`
+— the summary string is the toast copy.
+
+**Deterministic.** Verified by rebuilding twice and hashing: identical. A demo
+cannot rank differently on the third run.
+
+Supporting functions: `trip_days()` (every day **including empty ones**, for the
+day strip), `itinerary_conflicts()`, and `travel_estimate()` which produces the
+"~18 min by train" connector between consecutive stops.
+
+## 12. Itinerary
 
 `add_to_itinerary` · `update_itinerary_entry` · `remove_from_itinerary` · `my_itinerary`
 
@@ -149,7 +186,7 @@ All idempotent — a double-tap never errors. Behaviours the UI gets free:
   a date the traveler isn't there
 - Raises `no trip yet` when there's no trip — the cue to open trip creation
 
-## 11. Media
+## 13. Media
 
 `experience_media` stores **pointers and attribution only**. No video is ever
 copied; the schema has no column for one.
@@ -160,7 +197,7 @@ copied; the schema has no column for one.
 - `media_credit` is formatted server-side so every surface credits identically
 - Everything ships as `placeholder`, so the app looks finished with zero keys
 
-## 12. Content pipeline (offline, never during a demo)
+## 14. Content pipeline (offline, never during a demo)
 
 | Script | Does |
 |---|---|
@@ -172,7 +209,7 @@ copied; the schema has no column for one.
 Everything third-party runs **before** a demo and writes to the database, so
 nothing in the request path can be broken by Overpass being slow.
 
-## 13. Security
+## 15. Security
 
 RLS on all 15 tables:
 
@@ -185,7 +222,7 @@ RLS on all 15 tables:
 *Verified: traveler B sees **0** of traveler A's saves, trips and itinerary,
 while both see all 26 catalogue rows, and signed-out browsing still works.*
 
-## 14. Seeded content
+## 16. Seeded content
 
 26 experiences · 11 categories · 19 neighbourhoods · 25 hosts · 14 interests ·
 10 countries · 3 cities (Tokyo, Kyoto, Osaka)
