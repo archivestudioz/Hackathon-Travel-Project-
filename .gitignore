@@ -1,0 +1,16 @@
+.env
+.env.local
+web/config.js
+
+# Protomaps offline extracts — fetched by scripts/fetch_tiles.sh, too big for git
+web/tiles/*.pmtiles
+
+# Generated ElevenLabs audio before it is uploaded to Supabase Storage
+build/audio/
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+node_modules/
+.DS_Store
