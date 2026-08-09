@@ -320,6 +320,71 @@ is exactly where trip creation belongs in the flow.
 
 ---
 
+## The AI chat sheet
+
+> *"Make Day 2 lighter." · "Move the ramen tour later." · "Add something free on Thursday."*
+
+The one call in the product that does **not** go straight to Postgres. Claude
+Sonnet 5 runs server-side, because an Anthropic API key cannot ship to a
+browser the way the Supabase anon key can.
+
+```ts
+import { askAboutItinerary } from '@/lib/roam'
+
+const { reply, actions, plan } = await askAboutItinerary(tripId, [
+  ...history,
+  { role: 'user', content: 'Make Day 2 lighter' },
+])
+```
+
+Re-render the timeline from `result.plan` — it is the itinerary *after* the
+edits, every day including empty ones, so there is no refetch. `result.actions`
+says what changed (`added` / `moved` / `removed` / `rebuilt`) if you want to
+animate the specific row rather than diff the whole plan.
+
+**Three files, one secret.**
+
+| File | Copy to | Holds |
+|---|---|---|
+| `docs/itinerary-agent.ts` | `src/lib/itinerary-agent.ts` | tools + prompt. **Server only.** |
+| `docs/itinerary-chat-route.ts` | `src/app/api/itinerary/chat/route.ts` | the POST handler |
+| `askAboutItinerary()` in `roam-client.ts` | already there | the browser call |
+
+```bash
+npm i @anthropic-ai/sdk zod
+echo 'ANTHROPIC_API_KEY=sk-ant-...' >> .env.local   # NOT NEXT_PUBLIC_
+```
+
+### Why this is not a second way into the data
+
+Claude gets **eight tools, and every one is an RPC from the table above** —
+`get_plan`, `search_experiences`, `list_saved`, `add_stop`, `move_stop`,
+`remove_stop`, `rebuild_plan`, `check_conflicts`. It has no database
+connection and writes no SQL. Anything the sheet can do, a thumb could already
+have done on the same screen.
+
+- **RLS is unchanged.** The route forwards the traveler's own access token, so
+  `current_profile_id()` resolves to them exactly as in the browser. The
+  service-role key is never used here. A jailbroken prompt still cannot read
+  one row belonging to anybody else.
+- **The trip is pinned server-side.** `tripId` comes from the request, never
+  from the model, and `move_stop` rejects an entry that isn't already on that
+  trip's plan.
+- **Tool results are data, not instructions.** Descriptions come from
+  OpenStreetMap and Tavily. The system prompt says so, because
+  "ignore previous instructions" in a venue blurb is a real thing.
+
+Fixture mode works: with `NEXT_PUBLIC_ROAM_FIXTURES=1`, `askAboutItinerary()`
+returns a canned reply over the recorded plan, so the sheet can be built and
+reviewed before anyone has an API key.
+
+Model notes, since they bite: the model id is `claude-sonnet-5`, thinking is
+adaptive by default, and **`budget_tokens`, `temperature`, `top_p` and `top_k`
+all return 400**. `output_config.effort` is the only dial — it is set to
+`medium`, which is the latency dial for this surface.
+
+---
+
 ## Media: how to render it, and the one hard rule
 
 `experience_media` stores **pointers and attribution only**. No video is ever

@@ -1,0 +1,65 @@
+# Which of the 39 catalogued clips reach the product, and which do not.
+#
+# Every clip is listed. Nothing is silently dropped — a map that only shows the
+# hits reads as "we used everything", and we used about a third.
+#
+# verdict   ATTACH  the clip belongs to an experience that already exists
+#           NEW     in scope, and seed_catalog.sql creates the experience
+#           SKIP    reason in the last column
+#
+# target    exact experiences.name for ATTACH and NEW. Name is the key because
+#           experiences have no slug and a uuid in a review diff tells you
+#           nothing.
+#
+# Two rules decided the SKIPs, and both are about not lying to a judge:
+#
+#   1. OUT OF SCOPE — the demo is Tokyo, Kyoto and Osaka. Filing a Miyazaki
+#      gorge under "Osaka" would put it in an Osaka day's walking cluster and
+#      the planner would route someone 900km for lunch.
+#   2. UNPLACEABLE — the catalog itself says the venue is not identifiable.
+#      An experience row needs a real point on a real map; inventing
+#      coordinates for "an R&B bar in Tokyo" is the single most embarrassing
+#      thing this app could do on stage. These are not lost — run
+#      scripts/ingest_places.py or search the creator's profile for the venue
+#      tag, then move the row up to NEW.
+#
+# clip	verdict	target	note
+1	SKIP	-	out of scope — Chichibu-Tama-Kai, Saitama/Yamanashi
+2	SKIP	-	out of scope — multi-prefecture road-trip montage, no single venue
+3	SKIP	-	out of scope — Amanohashidate, northern Kyoto Pref, ~2.5h from the city
+4	NEW	Shibuya Yokocho Lantern Alley	Shibuya, food
+5	SKIP	-	not Japan — Japan Village, Brooklyn
+6	NEW	Do It Jazz at Club Metro	Kyoto's only nightlife row in the whole catalogue
+7	SKIP	-	out of scope — Sumata Gorge, Shizuoka
+8	SKIP	-	not Japan — Japan Village Summer Fest, Brooklyn
+9	ATTACH	Daikoku Futo PA Night Meet	primary — the meet itself, shot at Daikoku
+10	SKIP	-	out of scope — Kumano Kodo, Wakayama
+11	ATTACH	Tsukiji Outer Market Morning Walk	primary — same market, same ¥3800 nigiri on screen
+12	NEW	Boat Race Suminoe	Osaka, the ¥100 spectator sport
+13	ATTACH	Daikoku Futo PA Night Meet	secondary — five-spot tour, Daikoku is the anchor
+14	SKIP	-	out of scope — Kurokawa Onsen, Kumamoto
+15	SKIP	-	unplaceable — catalog: "venue/city not identifiable from visuals"
+16	NEW	Warp Shinjuku	Shinjuku, nightlife
+17	SKIP	-	out of scope — Iwakuni, Yamaguchi
+18	SKIP	-	out of scope — Nijigen no Mori, Awaji Island
+19	SKIP	-	unplaceable — catalog: "city unconfirmed"
+20	SKIP	-	unplaceable — "Tokyo" with no venue; needs the creator's location tag
+21	SKIP	-	out of scope — Takaragawa Onsen, Gunma
+22	NEW	Odaiba Summer Fireworks	Tokyo Bay, festival
+23	ATTACH	teamLab Planets TOKYO	primary — catalog independently guessed Planets, Toyosu
+24	NEW	Umeda Sky Building Heart Locks	Osaka, the one tourist landmark worth keeping
+25	SKIP	-	unplaceable — "a bar in Tokyo", no name on screen
+26	NEW	Blue Note Tokyo	Aoyama, music
+27	SKIP	-	out of scope — Takachiho Gorge, Miyazaki
+28	SKIP	-	unplaceable — promo clip, "details on Instagram"
+29	SKIP	-	named venue (Beatle Momo, Kyoto) but address unverified — resolve via ingest_places.py, then promote to NEW
+30	SKIP	-	Ikoma-Sanjo is the Nara side of Mt Ikoma; filing it under Osaka would distort that day's cluster
+31	SKIP	-	Pariseo Tokyo is a real recurring party but the venue is unverified — same fix as 29
+32	SKIP	-	same venue as 31
+33	SKIP	-	out of scope — riverside ryokan, Gunma area, town unconfirmed
+34	SKIP	-	unplaceable — rooftop lounge, no venue named
+35	NEW	Shibuya Bon Odori	Miyashita Park, festival
+36	SKIP	-	out of scope — Takachiho Gorge, Miyazaki (duplicate angle of 27)
+37	SKIP	-	out of scope — Sado Island, Niigata
+38	NEW	Tokyo Night Market at Yoyogi Park	Shibuya, market
+39	NEW	Red° Tokyo Tower	Minato, anime/gaming

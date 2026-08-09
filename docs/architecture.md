@@ -7,11 +7,16 @@ contract in [`api-contract.md`](./api-contract.md).
 
 ## 1. System architecture
 
-There is **no application server**. The client calls Postgres functions through
-PostgREST, and Postgres enforces every permission itself through Row Level
-Security. That removes the tier which usually breaks under time pressure, and
-RLS is the pattern this product would use in production anyway — not a
-hackathon shortcut.
+There is **no application server** on the data path. The client calls Postgres
+functions through PostgREST, and Postgres enforces every permission itself
+through Row Level Security. That removes the tier which usually breaks under
+time pressure, and RLS is the pattern this product would use in production
+anyway — not a hackathon shortcut.
+
+One route handler exists, on the side, and it is not on the data path: the AI
+chat sheet, which needs somewhere to keep an Anthropic key that is not the
+browser. It makes no authorization decision — it forwards the traveler's own
+token and the same RLS answers.
 
 ```
 ╔════════════════════════════════════════════════════════════════════════════╗
@@ -22,12 +27,29 @@ hackathon shortcut.
 ║        │  supabase-js  →  rpc('feed'), rpc('save_experience'), …           ║
 ║        │  anon JWT attached to every call                                  ║
 ║        │                                                                   ║
-║        └─ media rendered client-side:                                      ║
-║             tiktok/instagram → official oEmbed endpoint (keyless, 2026)    ║
-║             placeholder      → local asset, no network                     ║
-╚═══════════════════════════════╤════════════════════════════════════════════╝
-                                │ HTTPS
-╔═══════════════════════════════▼════════════════════════════════════════════╗
+║        ├─ media rendered client-side:                                      ║
+║        │    tiktok/instagram → official oEmbed endpoint (keyless, 2026)    ║
+║        │    placeholder      → local asset, no network                     ║
+║        │                                                                   ║
+║        └─ chat sheet ─► POST /api/itinerary/chat  (traveler's JWT in hdr)  ║
+╚═══════════════════════════════╤═══════════════════════════╤════════════════╝
+                                │ HTTPS                     │
+                                │        ╔══════════════════▼════════════════╗
+                                │        ║  NEXT.JS ROUTE HANDLER            ║
+                                │        ║   holds ANTHROPIC_API_KEY, and    ║
+                                │        ║   nothing else. No service role.  ║
+                                │        ║                                   ║
+                                │        ║   Claude Sonnet 5 + 8 tools       ║
+                                │        ║   get_plan · search_experiences   ║
+                                │        ║   list_saved · add_stop           ║
+                                │        ║   move_stop · remove_stop         ║
+                                │        ║   rebuild_plan · check_conflicts  ║
+                                │        ║                                   ║
+                                │        ║   every tool = an RPC below,      ║
+                                │        ║   called with the SAME JWT        ║
+                                │        ╚══════════════════╤════════════════╝
+                                │                           │
+╔═══════════════════════════════▼═══════════════════════════▼════════════════╗
 ║  SUPABASE EDGE                                                             ║
 ║    GoTrue (anonymous sign-in)  ·  PostgREST (RPC)  ·  Storage (avatars)    ║
 ╚═══════════════════════════════╤════════════════════════════════════════════╝
@@ -50,6 +72,7 @@ hackathon shortcut.
 ║   write    save/unsave_experience · dismiss_experience · undo_dismiss      ║
 ║            share_experience · add_to_itinerary                             ║
 ║            update_itinerary_entry · remove_from_itinerary                  ║
+║   planner  build_itinerary · trip_days · itinerary_conflicts               ║
 ║                                                                            ║
 ║  ── VIEW ────────────────────────────────────────────────────────────────  ║
 ║   experience_cards   one card shape reused by every surface                ║
@@ -73,6 +96,13 @@ hackathon shortcut.
 runs *before* the demo and writes to the database. Nothing in the request path
 depends on Overpass, Tavily, or Stay22 being reachable while a judge is
 watching.
+
+**Why the chat sheet does not weaken any of that.** It is drawn as a side
+branch on purpose. It cannot reach a table the RPC surface does not already
+expose, it runs as the traveler rather than as the service role, and the trip
+it may edit is fixed by the request before the model sees anything. If the
+route is down, every other screen still works — the sheet is an alternative
+input method for the itinerary, not a dependency of it.
 
 ---
 
