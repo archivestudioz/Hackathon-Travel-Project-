@@ -21,6 +21,7 @@ this product would use in production anyway.
 - **[`docs/architecture.md`](docs/architecture.md)** — system diagram, ER model, end-to-end dataflow, scoring breakdown
 - **[`docs/api-contract.md`](docs/api-contract.md)** — every RPC, TypeScript types, media rendering rules
 - **[`docs/roam-client.ts`](docs/roam-client.ts)** — drop-in typed client. Copy this one file into the Next.js app and the integration is done.
+- **[`docs/fixtures.ts`](docs/fixtures.ts)** — real recorded payloads, so screens can be built before the backend exists.
 
 ## Integrating the UI
 
@@ -44,6 +45,21 @@ await saveExperience(cards[0].experience_id)
 **one** card component and reuses it on every surface. Each card arrives with
 its media, its social proof, whether you have saved it, and `reasons[0]` —
 the line explaining why it surfaced.
+
+### Build screens before the backend exists
+
+```bash
+NEXT_PUBLIC_ROAM_FIXTURES=1 npm run dev
+```
+
+Every function then returns a **real recorded payload** from `fixtures.ts` —
+dumped from the seeded database, not hand-written, so the shapes cannot drift
+from what the engine actually returns. Components never learn whether the data
+is live, so removing the flag is the entire migration.
+
+This matters most for Figma-generated components, which tend to arrive with
+invented prop shapes. Bind them to `ExperienceCard` from the first commit and
+there is no later refactor of every card.
 
 ```
 supabase/migrations/0001_schema.sql     tables, generated lat/lng, triggers

@@ -162,7 +162,36 @@ export interface ExploreFilters {
 
 /* ── internals ────────────────────────────────────────────────────────── */
 
+/**
+ * Set NEXT_PUBLIC_ROAM_FIXTURES=1 to run the whole app on real recorded
+ * payloads with no Supabase project at all. One branch in one place, so
+ * components never learn whether the data is live — which is what lets screens
+ * be built and reviewed before the backend is even provisioned.
+ */
+const USE_FIXTURES = process.env.NEXT_PUBLIC_ROAM_FIXTURES === '1'
+
+const FIXTURE_MAP: Record<string, keyof typeof import('./fixtures')> = {
+  session_state:      'SESSION',
+  feed:               'FEED',
+  explore:            'FEED',
+  cold_start_picks:   'PICKER_CARDS',
+  experience_detail:  'EXPERIENCE_DETAIL',
+  explore_sections:   'EXPLORE_SECTIONS',
+  my_itinerary:       'ITINERARY',
+  my_trips:           'TRIPS',
+  my_saved:           'SAVED',
+  onboarding_options: 'ONBOARDING_OPTIONS',
+  trip_options:       'TRIP_OPTIONS',
+}
+
 async function call<T>(fn: string, args: Record<string, unknown> = {}): Promise<T> {
+  if (USE_FIXTURES) {
+    const key = FIXTURE_MAP[fn]
+    if (key) return (await import('./fixtures'))[key] as T
+    // Writes have no fixture: echo enough for optimistic UI to settle.
+    return { ok: true, ...args } as T
+  }
+
   const { data, error } = await supabase.rpc(fn, args)
   if (error) throw new Error(`${fn}: ${error.message}`)
   return data as T
