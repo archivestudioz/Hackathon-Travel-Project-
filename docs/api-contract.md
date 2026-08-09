@@ -10,13 +10,30 @@ directly — RLS and the scoring pass both live behind these functions.
 const { data, error } = await supabase.rpc('feed', { p_limit: 20 })
 ```
 
-**Auth** — sign in anonymously once on load. A profile and an empty taste row
-are created by trigger, so there is nothing else to set up:
+**Auth** — the welcome screen offers sign-up as the primary action, with
+*Continue as guest* at the bottom. Both create a profile through the same
+trigger, so nothing downstream distinguishes them.
 
 ```ts
-const { data: { session } } = await supabase.auth.getSession()
-if (!session) await supabase.auth.signInAnonymously()
+// primary
+await supabase.auth.signUp({ email, password })
+// bottom-of-screen escape hatch
+await supabase.auth.signInAnonymously()
 ```
+
+**A guest upgrades in place.** Calling `updateUser({ email, password })` on an
+anonymous session converts the *same* `auth.users.id`, so the same `profiles`
+row — every save, dismissal, trip and itinerary survives. A trigger clears
+`is_guest` automatically; the client does not need to tell the database.
+
+```ts
+await supabase.auth.updateUser({ email, password })   // nothing is lost
+```
+
+Call **`session_state()`** on load rather than inferring from three fields; it
+returns `next_screen` as `'welcome' | 'picker' | 'feed'` and a `prompt_signup`
+flag that only fires once a guest has three or more saves — nudging an empty
+guest to sign up is how you lose them.
 
 No function takes a profile id. The caller is resolved server-side from the JWT,
 so a client cannot act as another traveler.
