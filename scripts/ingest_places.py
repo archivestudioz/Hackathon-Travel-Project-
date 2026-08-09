@@ -42,6 +42,12 @@ CATEGORY_FILTERS: dict[str, list[str]] = {
     "shopping":    ['["shop"~"^(books|clothes|music|second_hand|vintage)$"]'],
     "anime":       ['["shop"~"^(anime|games|video_games)$"]', '["leisure"="amusement_arcade"]'],
     "attraction":  ['["tourism"~"^(attraction|viewpoint)$"]'],
+    # Tokyo car culture is a large local scene that guidebooks miss. Expressway
+    # parking areas are where the meets actually happen, so they matter as much
+    # as the shops.
+    "cars":        ['["shop"~"^(car|car_parts|car_repair|tyres)$"]',
+                    '["highway"="services"]', '["highway"="rest_area"]',
+                    '["leisure"="track"]["sport"~"motor|karting"]'],
 }
 
 # Tags that mean an experience is for adults. Mirrors is_adults_only() in the

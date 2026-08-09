@@ -64,7 +64,8 @@ insert into interests (slug, label_en, emoji, sort) values
   ('festival',    'Festivals',           '🎏', 10),
   ('wellness',    'Wellness & onsen',    '♨️', 11),
   ('traditional', 'Traditional culture', '⛩', 12),
-  ('market',      'Markets',             '🧺', 13);
+  ('market',      'Markets',             '🧺', 13),
+  ('cars',        'Car culture',         '🚗', 14);
 
 -- ---------------------------------------------------------------- cities --
 
@@ -126,7 +127,15 @@ insert into hosts (id, name, kind, bio, verified, is_local) values
   ('a0000000-0000-4000-8000-000000000017','Shinsekai Kushikatsu Kumiai','community','Shopkeepers association of Shinsekai.',                     false, true),
   ('a0000000-0000-4000-8000-000000000018','Nakazaki Zine Club','community','Cafe owners and small publishers.',                                  false, true),
   ('a0000000-0000-4000-8000-000000000019','Osaka Tenmangu Shrine','institution','Host of Tenjin Matsuri since 951.',                             true,  true),
-  ('a0000000-0000-4000-8000-000000000020','Amemura Art Walk','community','Street artists running free walking sessions.',                        false, true);
+  ('a0000000-0000-4000-8000-000000000020','Amemura Art Walk','community','Street artists running free walking sessions.',                        false, true),
+  -- Tokyo car scene. Note which of these are is_local: the parking-area meets
+  -- have no organiser at all, while the manufacturer showrooms are marketing.
+  -- That distinction is what the locality score is reading.
+  ('a0000000-0000-4000-8000-000000000021','Daikoku Regulars','community','No organisers, no schedule. People just turn up.',                     false, true),
+  ('a0000000-0000-4000-8000-000000000022','Morning Cruise Tokyo','community','Monthly Cars & Coffee at Daikanyama T-Site since 2011.',           true,  true),
+  ('a0000000-0000-4000-8000-000000000023','Super Autobacs','local_business','Parts megastore and demo-car showroom.',                            true,  false),
+  ('a0000000-0000-4000-8000-000000000024','Nissan Crossing','institution','Nissan brand showroom on the Ginza crossing.',                        true,  false),
+  ('a0000000-0000-4000-8000-000000000025','Honda Welcome Plaza','institution','Honda showroom and F1 heritage display in Aoyama.',               true,  false);
 
 -- ----------------------------------------------------------- experiences --
 
@@ -309,6 +318,82 @@ from (values
    'art','{art,shopping,music,solo-friendly,group-friendly}', interval '4 days', 90, 'Sundays, 15:00',
    true, 0, null, 'Triangle Park, Amerikamura','Chuo Ward, Osaka',
    135.4980, 34.6720, null, null, 0.87, 84, 17)
+) as v(id, city, hood, host, name, name_ja, short_desc, long_desc, category, tags,
+       offset_h, duration, recurrence, is_free, price, price_note, venue, address,
+       lng, lat, booking, external, locality, saves, shares)
+join cities c on c.slug = v.city
+left join neighborhoods n on n.city_id = c.id and n.slug = v.hood;
+
+
+-- ────────────────────────── Tokyo car culture ──────────────────────────
+--
+-- A genuinely large local scene that guidebooks barely acknowledge, which makes
+-- it close to ideal inventory for this product: real, time-sensitive, and
+-- almost entirely absent from the tourist trail. Locality is spread on purpose
+-- — a Nissan showroom on the Ginza crossing is not Daikoku at midnight, and the
+-- scoring needs to be able to tell them apart.
+
+insert into experiences (
+  id, city_id, neighborhood_id, host_id, name, name_ja, short_description, description,
+  category, tags, starts_at, duration_min, recurrence_note,
+  is_free, price_yen, price_note, venue_name, address, point,
+  booking_url, external_url, locality, save_count, share_count)
+select
+  v.id::uuid, c.id, n.id, v.host::uuid, v.name, v.name_ja, v.short_desc, v.long_desc,
+  v.category, v.tags::text[],
+  case when v.offset_h is null then null else now() + v.offset_h end,
+  v.duration, v.recurrence,
+  v.is_free, v.price, v.price_note, v.venue, v.address,
+  st_makepoint(v.lng, v.lat)::geography,
+  v.booking, v.external, v.locality, v.saves, v.shares
+from (values
+  ('b0000000-0000-4000-8000-000000000021','tokyo',null,'a0000000-0000-4000-8000-000000000021',
+   'Daikoku Futo PA Night Meet','大黒PA',
+   'The most famous car park on earth, under an expressway loop.',
+   'A motorway service area on reclaimed land in Yokohama Bay that became the centre of Japanese car culture by accident. Bosozoku bikes, kaido racers, immaculate kyusha, and someone''s twin-turbo Supra idling next to a hand-built VIP sedan. Nothing is organised and nothing is advertised — it happens on weekend nights when the police are not closing the ramp. Take the Wangan line, not a taxi that will not wait.',
+   'cars','{cars,late-night,photography,group-friendly}', interval '22 hours', 180, 'Weekend nights, weather and police permitting',
+   true, 0, 'Free. Parking is the whole point.', 'Daikoku Futo Parking Area','Daikoku Futo, Tsurumi Ward, Yokohama (45 min from central Tokyo)',
+   139.6873, 35.4553, null, null, 0.94, 388, 121),
+
+  ('b0000000-0000-4000-8000-000000000022','tokyo','toyosu','a0000000-0000-4000-8000-000000000021',
+   'Tatsumi PA After Midnight','辰巳PA',
+   'Smaller, closer, and the Tokyo skyline behind every car.',
+   'Tatsumi sits on the Shuto expressway with the bay and the skyline as a backdrop, which is why it out-photographs Daikoku even though it is a fraction of the size. Quieter crowd, more regulars, more actual conversation. Peaks somewhere after 1am.',
+   'cars','{cars,late-night,photography,viewpoint}', interval '26 hours', 120, 'Most nights after midnight',
+   true, 0, null, 'Tatsumi Parking Area','Tatsumi, Koto City, Tokyo',
+   139.8092, 35.6417, null, null, 0.91, 174, 46),
+
+  ('b0000000-0000-4000-8000-000000000023','tokyo','nakameguro','a0000000-0000-4000-8000-000000000022',
+   'Daikanyama Morning Cruise','モーニングクルーズ',
+   'Cars and coffee at 7am, then everyone drives off by nine.',
+   'A monthly meet in the T-Site bookshop car park that has run since 2011, with a different theme each time — air-cooled Porsches one month, 1980s Japanese saloons the next. Genuinely welcoming to people on foot, and the coffee is good. Over by 09:00 because Daikanyama has to open.',
+   'cars','{cars,shopping,photography,family-friendly}', interval '54 hours', 120, 'First Sunday monthly, 07:00–09:00',
+   true, 0, 'Free to attend on foot', 'Daikanyama T-Site','17-5 Sarugakucho, Shibuya City, Tokyo',
+   139.7030, 35.6490, null, null, 0.74, 142, 33),
+
+  ('b0000000-0000-4000-8000-000000000024','tokyo','toyosu','a0000000-0000-4000-8000-000000000023',
+   'Super Autobacs Tokyo Bay','スーパーオートバックス',
+   'Four floors of parts, and demo cars nobody will stop you photographing.',
+   'A car parts megastore the size of a supermarket, with a demo floor of fully built cars, a wheel wall that goes to the ceiling, and an aftermarket catalogue that explains more about Japanese car culture than any museum. Staff are used to visitors and several speak English.',
+   'cars','{cars,shopping}', null, 90, 'Daily 10:00–20:00',
+   true, 0, 'Free entry', 'Super Autobacs Tokyo Bay Shinonome','1-2-8 Shinonome, Koto City, Tokyo',
+   139.8000, 35.6470, null, null, 0.66, 88, 14),
+
+  ('b0000000-0000-4000-8000-000000000025','tokyo','shinjuku','a0000000-0000-4000-8000-000000000025',
+   'Honda Welcome Plaza Aoyama','ホンダウエルカムプラザ青山',
+   'Free F1 cars in a lobby, ten minutes from Omotesando.',
+   'The ground floor of Honda headquarters, open to the street, usually with a championship-winning F1 car and a rotating display of ASIMO-era engineering. Takes twenty minutes and costs nothing, which makes it the easiest car stop in central Tokyo.',
+   'cars','{cars,culture,family-friendly}', null, 30, 'Daily 10:00–18:00',
+   true, 0, 'Free', 'Honda Welcome Plaza Aoyama','2-1-1 Minami-Aoyama, Minato City, Tokyo',
+   139.7170, 35.6660, null, null, 0.34, 96, 12),
+
+  ('b0000000-0000-4000-8000-000000000026','tokyo',null,'a0000000-0000-4000-8000-000000000024',
+   'Nissan Crossing, Ginza','ニッサンクロッシング',
+   'Concept cars behind glass on the busiest corner in Ginza.',
+   'A three-storey brand showroom on the Ginza 4-chome crossing with a rotating concept or heritage car and a café upstairs. Squarely a tourist stop rather than a scene one — included here so you can see the difference from Daikoku in one scroll.',
+   'cars','{cars,shopping}', null, 40, 'Daily 10:00–20:00',
+   true, 0, 'Free', 'Nissan Crossing','5-8-1 Ginza, Chuo City, Tokyo',
+   139.7650, 35.6720, null, null, 0.22, 211, 28)
 ) as v(id, city, hood, host, name, name_ja, short_desc, long_desc, category, tags,
        offset_h, duration, recurrence, is_free, price, price_note, venue, address,
        lng, lat, booking, external, locality, saves, shares)

@@ -26,6 +26,13 @@ $$;
 
 -- update_profile gains age_band. Same COALESCE-per-field shape as before, so a
 -- screen can save one field without clobbering the others.
+--
+-- The old three-argument version has to be dropped explicitly: adding a
+-- parameter creates an OVERLOAD rather than replacing the function, and a
+-- client calling update_profile with three arguments would silently reach the
+-- version that cannot set age_band. Postgres will not warn about this.
+drop function if exists update_profile(text, text, text);
+
 create or replace function update_profile(
   p_display_name text default null,
   p_avatar_url   text default null,
